@@ -11,5 +11,5 @@ fn main() {
     println!("Output: {:?}", tokens);
 
     let mut parser = parse::Parser::new(tokens.into_iter());
-    parser.parse();
+    let _ = parser.parse();
 }

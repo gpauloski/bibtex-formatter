@@ -1,6 +1,6 @@
 // use crate::Result;
 
-#[derive(Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum Token {
     At,
     BraceLeft,
@@ -51,14 +51,13 @@ pub fn tokenize(text: &str) -> Vec<Token> {
 }
 
 pub fn stringify(tokens: Vec<Token>) -> String {
-    let mut capacity = tokens
+    let capacity = tokens
         .iter()
         .map(|token| match token {
             Token::Value(s) => s.len(),
             _ => 1,
         })
         .sum();
-    capacity += tokens.len();
 
     let mut string = String::with_capacity(capacity);
 
