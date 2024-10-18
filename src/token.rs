@@ -74,24 +74,17 @@ pub fn stringify(tokens: Vec<Token>) -> String {
 
     for token in tokens {
         match token {
+            Token::At => string.push('@'),
+            Token::BraceLeft => string.push('{'),
+            Token::BraceRight => string.push('}'),
+            Token::Comma => string.push(','),
+            Token::Equals => string.push('='),
+            Token::Quote => string.push('"'),
             Token::Value(s) => string.push_str(&s),
-            _ => {
-                let c = match token {
-                    Token::At => '@',
-                    Token::BraceLeft => '{',
-                    Token::BraceRight => '}',
-                    Token::Comma => ',',
-                    Token::Equals => '=',
-                    Token::Quote => '"',
-                    Token::Whitespace(Whitespace::NewLine) => '\n',
-                    Token::Whitespace(Whitespace::Space) => ' ',
-                    Token::Whitespace(Whitespace::Tab) => '\t',
-                    // TODO: fix this type narrowing.
-                    _ => panic!("Unreachable!"),
-                };
-                string.push(c);
-            }
-        }
+            Token::Whitespace(Whitespace::NewLine) => string.push('\n'),
+            Token::Whitespace(Whitespace::Space) => string.push(' '),
+            Token::Whitespace(Whitespace::Tab) => string.push('\t'),
+        };
     }
 
     string
