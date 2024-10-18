@@ -6,7 +6,7 @@ A bibtex parser and formatter written in Rust.
 
 - [x] Add custom error types for common cases (end of stream, unexpected token).
 - [x] Add parser tests for error modes.
-- [ ] Support commas and spaces in tag values.
+- [x] Support commas and spaces in tag values.
 - [ ] Add end to end tests.
 - [ ] Improve stringification.
 - [ ] Refactor lexer to maintain state so line/column can be stored in Tokens.

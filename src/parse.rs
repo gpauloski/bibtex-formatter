@@ -41,8 +41,23 @@ impl<I: Iterator<Item = Token>> Parser<I> {
         self.tokens.peek()
     }
 
+    fn peek_non_whitespace(&mut self) -> Option<Token> {
+        while let Some(token) = self.peek() {
+            if !token.is_whitespace() {
+                return Some(token.clone());
+            }
+            self.next();
+        }
+        None
+    }
+
     fn next(&mut self) -> Option<Token> {
         self.tokens.next()
+    }
+
+    fn next_non_whitespace(&mut self) -> Option<Token> {
+        self.tokens
+            .find(|token| !matches!(token, Token::Whitespace(_)))
     }
 
     fn parse_content_delim(&mut self, start: Token, end: Token) -> Result<String> {
@@ -70,7 +85,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn parse_content(&mut self) -> Result<String> {
-        match self.peek() {
+        match self.peek_non_whitespace() {
             Some(Token::BraceLeft) => self.parse_content_delim(Token::BraceLeft, Token::BraceRight),
             Some(Token::Quote) => self.parse_content_delim(Token::Quote, Token::Quote),
             Some(token) => Err(Error::ContentParseError(
@@ -87,15 +102,15 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     fn parse_entry(&mut self) -> Result<Entry> {
         self.expect(Token::At)?;
 
-        if let Some(Token::Value(kind)) = self.next() {
+        if let Some(Token::Value(kind)) = self.next_non_whitespace() {
             let mut tags: Vec<Tag> = Vec::new();
 
             self.expect(Token::BraceLeft)?;
 
-            if let Some(Token::Value(key)) = self.next() {
+            if let Some(Token::Value(key)) = self.next_non_whitespace() {
                 loop {
-                    if self.peek() == Some(&Token::BraceRight) {
-                        self.next();
+                    if self.peek_non_whitespace() == Some(Token::BraceRight) {
+                        self.next_non_whitespace();
                         break;
                     }
                     self.expect(Token::Comma)?;
@@ -112,8 +127,8 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn parse_tag(&mut self) -> Result<Tag> {
-        match self.next() {
-            Some(Token::Value(name)) => match self.next() {
+        match self.next_non_whitespace() {
+            Some(Token::Value(name)) => match self.next_non_whitespace() {
                 Some(Token::Equals) => Ok(Tag {
                     name,
                     content: self.parse_content()?,
@@ -129,7 +144,7 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     pub fn parse(&mut self) -> Result<Vec<Entry>> {
         let mut entries: Vec<Entry> = Vec::new();
 
-        while let Some(token) = self.peek() {
+        while let Some(token) = self.peek_non_whitespace() {
             match token {
                 Token::At => entries.push(self.parse_entry()?),
                 _ => return Err(Error::UnexpectedToken(Token::At, token.clone())),
