@@ -1,20 +1,23 @@
 use derive_more::From;
 
-use crate::token::Token;
+use crate::token::{Token, TokenInfo};
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, From, PartialEq)]
+#[derive(Debug, From)]
 pub enum Error {
     ContentParseError(String),
     EndOfTokenStream,
-    MissingCiteKey,
-    MissingEntryType,
-    MissingTagName,
-    UnexpectedToken(Token, Token),
+    MissingCiteKey(TokenInfo),
+    MissingEntryType(TokenInfo),
+    MissingTagName(TokenInfo),
+    UnexpectedToken(Token, TokenInfo),
 
     #[from]
     Custom(String),
+
+    #[from]
+    Io(std::io::Error),
 }
 
 impl Error {

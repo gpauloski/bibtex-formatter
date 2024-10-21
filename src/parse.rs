@@ -1,4 +1,4 @@
-use crate::token::{stringify, Token};
+use crate::token::{stringify, Special, Token, TokenInfo};
 use crate::{Error, Result};
 use std::iter::Peekable;
 
@@ -17,12 +17,12 @@ pub struct Entry {
 
 pub struct Parser<I>
 where
-    I: Iterator<Item = Token>,
+    I: Iterator<Item = TokenInfo>,
 {
     tokens: Peekable<I>,
 }
 
-impl<I: Iterator<Item = Token>> Parser<I> {
+impl<I: Iterator<Item = TokenInfo>> Parser<I> {
     pub fn new(iter: I) -> Self {
         Parser {
             tokens: iter.peekable(),
@@ -30,52 +30,58 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn expect(&mut self, expected: Token) -> Result<()> {
-        match self.next() {
-            Some(token) if token == expected => Ok(()),
-            Some(token) => Err(Error::UnexpectedToken(expected, token)),
+        match self.next_non_whitespace() {
+            Some(token_info) if token_info.value == expected => Ok(()),
+            Some(token_info) => Err(Error::UnexpectedToken(expected, token_info)),
             None => Err(Error::EndOfTokenStream),
         }
     }
 
-    fn peek(&mut self) -> Option<&Token> {
+    fn peek(&mut self) -> Option<&TokenInfo> {
         self.tokens.peek()
     }
 
-    fn peek_non_whitespace(&mut self) -> Option<Token> {
-        while let Some(token) = self.peek() {
-            if !token.is_whitespace() {
-                return Some(token.clone());
+    fn peek_non_whitespace(&mut self) -> Option<TokenInfo> {
+        while let Some(token_info) = self.peek() {
+            if !token_info.is_whitespace() {
+                return Some(token_info.clone());
             }
             self.next();
         }
         None
     }
 
-    fn next(&mut self) -> Option<Token> {
+    fn next(&mut self) -> Option<TokenInfo> {
         self.tokens.next()
     }
 
-    fn next_non_whitespace(&mut self) -> Option<Token> {
+    fn next_non_whitespace(&mut self) -> Option<TokenInfo> {
         self.tokens
-            .find(|token| !matches!(token, Token::Whitespace(_)))
+            .find(|token_info| !matches!(token_info.value, Token::Whitespace(_)))
     }
 
     fn parse_content_delim(&mut self, start: Token, end: Token) -> Result<String> {
-        match self.next() {
-            Some(token) if token == start => (),
-            Some(token) => return Err(Error::UnexpectedToken(start, token)),
+        match self.next_non_whitespace() {
+            Some(token_info) if token_info.value == start => (),
+            Some(token_info) => return Err(Error::UnexpectedToken(start, token_info)),
             None => return Err(Error::EndOfTokenStream),
         }
 
+        let mut nested = 0;
         let mut tokens: Vec<Token> = Vec::new();
 
         loop {
             if let Some(token) = self.next() {
-                if token == end {
+                if start == end && token.value == end {
                     break;
-                } else {
-                    tokens.push(token);
+                } else if token.value == start {
+                    nested += 1;
+                } else if token.value == end && nested == 0 {
+                    break;
+                } else if token.value == end {
+                    nested -= 1;
                 }
+                tokens.push(token.value);
             } else {
                 return Err(Error::EndOfTokenStream);
             }
@@ -85,69 +91,104 @@ impl<I: Iterator<Item = Token>> Parser<I> {
     }
 
     fn parse_content(&mut self) -> Result<String> {
-        match self.peek_non_whitespace() {
-            Some(Token::BraceLeft) => self.parse_content_delim(Token::BraceLeft, Token::BraceRight),
-            Some(Token::Quote) => self.parse_content_delim(Token::Quote, Token::Quote),
-            Some(token) => Err(Error::ContentParseError(
+        let token_info = match self.peek_non_whitespace() {
+            Some(token) => token,
+            None => return Err(Error::EndOfTokenStream),
+        };
+
+        match token_info.value {
+            Token::Special(Special::BraceLeft) => self.parse_content_delim(
+                Token::Special(Special::BraceLeft),
+                Token::Special(Special::BraceRight),
+            ),
+            Token::Special(Special::Quote) => self.parse_content_delim(
+                Token::Special(Special::Quote),
+                Token::Special(Special::Quote),
+            ),
+            _ => Err(Error::ContentParseError(
                 format!(
                     "Expected opening brace or quote at start of tag contents but found {:?}",
-                    token
+                    token_info
                 )
                 .to_string(),
             )),
-            None => Err(Error::EndOfTokenStream),
         }
     }
 
     fn parse_entry(&mut self) -> Result<Entry> {
-        self.expect(Token::At)?;
+        self.expect(Token::Special(Special::At))?;
 
-        if let Some(Token::Value(kind)) = self.next_non_whitespace() {
-            let mut tags: Vec<Tag> = Vec::new();
+        let token_info = match self.next_non_whitespace() {
+            Some(token) => token,
+            None => return Err(Error::EndOfTokenStream),
+        };
 
-            self.expect(Token::BraceLeft)?;
+        let kind = match token_info.value {
+            Token::Value(kind) => kind,
+            _ => return Err(Error::MissingEntryType(token_info)),
+        };
 
-            if let Some(Token::Value(key)) = self.next_non_whitespace() {
-                loop {
-                    if self.peek_non_whitespace() == Some(Token::BraceRight) {
-                        self.next_non_whitespace();
-                        break;
-                    }
-                    self.expect(Token::Comma)?;
+        self.expect(Token::Special(Special::BraceLeft))?;
+
+        let key = match self.next_non_whitespace() {
+            Some(token) => match token.value {
+                Token::Value(key) => key,
+                _ => return Err(Error::MissingCiteKey(token)),
+            },
+            None => return Err(Error::EndOfTokenStream),
+        };
+
+        let mut tags: Vec<Tag> = Vec::new();
+        loop {
+            match self.peek_non_whitespace() {
+                Some(token) if token.value == Token::Special(Special::BraceRight) => {
+                    self.next_non_whitespace();
+                    break;
+                }
+                Some(token) if token.value == Token::Special(Special::Comma) => {
+                    self.next_non_whitespace();
+                }
+                _ => {
                     tags.push(self.parse_tag()?);
                 }
-
-                Ok(Entry { kind, key, tags })
-            } else {
-                Err(Error::MissingCiteKey)
-            }
-        } else {
-            Err(Error::MissingEntryType)
+            };
         }
+
+        Ok(Entry { kind, key, tags })
     }
 
     fn parse_tag(&mut self) -> Result<Tag> {
-        match self.next_non_whitespace() {
-            Some(Token::Value(name)) => match self.next_non_whitespace() {
-                Some(Token::Equals) => Ok(Tag {
-                    name,
-                    content: self.parse_content()?,
-                }),
-                Some(token) => Err(Error::UnexpectedToken(Token::Equals, token)),
-                None => Err(Error::EndOfTokenStream),
-            },
-            Some(_) => Err(Error::MissingTagName),
-            None => Err(Error::EndOfTokenStream),
-        }
+        let token_info = match self.next_non_whitespace() {
+            Some(token) => token,
+            None => return Err(Error::EndOfTokenStream),
+        };
+
+        let name = match token_info.value {
+            Token::Value(name) => name,
+            _ => return Err(Error::MissingTagName(token_info)),
+        };
+
+        self.expect(Token::Special(Special::Equals))?;
+
+        let content = self.parse_content()?;
+
+        Ok(Tag { name, content })
     }
 
     pub fn parse(&mut self) -> Result<Vec<Entry>> {
         let mut entries: Vec<Entry> = Vec::new();
 
-        while let Some(token) = self.peek_non_whitespace() {
-            match token {
-                Token::At => entries.push(self.parse_entry()?),
-                _ => return Err(Error::UnexpectedToken(Token::At, token.clone())),
+        while let Some(token_info) = self.peek_non_whitespace() {
+            match token_info.value {
+                Token::Special(Special::At) => entries.push(self.parse_entry()?),
+                _ => {
+                    return Err(Error::UnexpectedToken(
+                        Token::Special(Special::At),
+                        // Should never be None because peek_non_whitespace()
+                        // returned Some(_).
+                        self.next().unwrap(),
+                    ));
+                }
             }
         }
 
@@ -162,47 +203,57 @@ mod tests {
     #[test]
     fn test_parse_no_tags() {
         let tokens = vec![
-            Token::At,
+            Token::Special(Special::At),
             Token::Value("misc".to_string()),
-            Token::BraceLeft,
+            Token::Special(Special::BraceLeft),
             Token::Value("citekey".to_string()),
-            Token::BraceRight,
+            Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::new(tokens.into_iter());
-        let result = parser.parse();
+        let iter = tokens.into_iter().map(|token| TokenInfo {
+            value: token,
+            line: 0,
+            column: 0,
+        });
+        let mut parser = Parser::new(iter);
+        let result = parser.parse().unwrap();
         let expected = vec![Entry {
             kind: "misc".to_string(),
             key: "citekey".to_string(),
             tags: Vec::with_capacity(0),
         }];
-        assert_eq!(result, Ok(expected));
+        assert_eq!(result, expected);
     }
 
     #[test]
     fn test_parse_with_tags() {
         let tokens = vec![
-            Token::At,
+            Token::Special(Special::At),
             Token::Value("misc".to_string()),
-            Token::BraceLeft,
+            Token::Special(Special::BraceLeft),
             Token::Value("citekey".to_string()),
-            Token::Comma,
+            Token::Special(Special::Comma),
             Token::Value("author".to_string()),
-            Token::Equals,
-            Token::Quote,
+            Token::Special(Special::Equals),
+            Token::Special(Special::Quote),
             Token::Value("foo".to_string()),
-            Token::Quote,
-            Token::Comma,
+            Token::Special(Special::Quote),
+            Token::Special(Special::Comma),
             Token::Value("title".to_string()),
-            Token::Equals,
-            Token::BraceLeft,
+            Token::Special(Special::Equals),
+            Token::Special(Special::BraceLeft),
             Token::Value("the".to_string()),
-            Token::Comma,
+            Token::Special(Special::Comma),
             Token::Value("bar".to_string()),
-            Token::BraceRight,
-            Token::BraceRight,
+            Token::Special(Special::BraceRight),
+            Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::new(tokens.into_iter());
-        let result = parser.parse();
+        let iter = tokens.into_iter().map(|token| TokenInfo {
+            value: token,
+            line: 0,
+            column: 0,
+        });
+        let mut parser = Parser::new(iter);
+        let result = parser.parse().unwrap();
         let expected = vec![Entry {
             kind: "misc".to_string(),
             key: "citekey".to_string(),
@@ -217,46 +268,91 @@ mod tests {
                 },
             ],
         }];
-        assert_eq!(result, Ok(expected));
+        assert_eq!(result, expected);
     }
 
     #[test]
     fn test_parse_missing_type() {
-        let tokens = vec![Token::At, Token::BraceLeft, Token::BraceRight];
-        let mut parser = Parser::new(tokens.into_iter());
-        let result = parser.parse();
-        let expected = Err(Error::MissingEntryType);
-        assert_eq!(result, expected);
+        let tokens = vec![
+            Token::Special(Special::At),
+            Token::Special(Special::BraceLeft),
+            Token::Special(Special::BraceRight),
+        ];
+        let iter = tokens.into_iter().map(|token| TokenInfo {
+            value: token,
+            line: 0,
+            column: 0,
+        });
+        let mut parser = Parser::new(iter);
+        let result = parser.parse().unwrap_err();
+        assert!(matches!(result, Error::MissingEntryType(_)));
     }
 
     #[test]
     fn test_parse_missing_key() {
         let tokens = vec![
-            Token::At,
+            Token::Special(Special::At),
             Token::Value("misc".to_string()),
-            Token::BraceLeft,
-            Token::BraceRight,
+            Token::Special(Special::BraceLeft),
+            Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::new(tokens.into_iter());
-        let result = parser.parse();
-        let expected = Err(Error::MissingCiteKey);
-        assert_eq!(result, expected);
+        let iter = tokens.into_iter().map(|token| TokenInfo {
+            value: token,
+            line: 0,
+            column: 0,
+        });
+        let mut parser = Parser::new(iter);
+        let result = parser.parse().unwrap_err();
+        assert!(matches!(result, Error::MissingCiteKey(_)));
     }
 
     #[test]
     fn test_parse_missing_equals() {
         let tokens = vec![
-            Token::At,
+            Token::Special(Special::At),
             Token::Value("misc".to_string()),
-            Token::BraceLeft,
+            Token::Special(Special::BraceLeft),
             Token::Value("citekey".to_string()),
-            Token::Comma,
+            Token::Special(Special::Comma),
             Token::Value("author".to_string()),
-            Token::BraceRight,
+            Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::new(tokens.into_iter());
-        let result = parser.parse();
-        let expected = Err(Error::UnexpectedToken(Token::Equals, Token::BraceRight));
-        assert_eq!(result, expected);
+        let iter = tokens.into_iter().map(|token| TokenInfo {
+            value: token,
+            line: 0,
+            column: 0,
+        });
+        let mut parser = Parser::new(iter);
+        let result = parser.parse().unwrap_err();
+        assert!(matches!(
+            result,
+            Error::UnexpectedToken(
+                Token::Special(Special::Equals),
+                TokenInfo {
+                    value: Token::Special(Special::BraceRight),
+                    line: 0,
+                    column: 0,
+                },
+            )
+        ));
+    }
+
+    #[test]
+    fn test_nested_content() {
+        let tokens = vec![
+            Token::Special(Special::BraceLeft),
+            Token::Special(Special::BraceLeft),
+            Token::Value("value".to_string()),
+            Token::Special(Special::BraceRight),
+            Token::Special(Special::BraceRight),
+        ];
+        let iter = tokens.into_iter().map(|token| TokenInfo {
+            value: token,
+            line: 0,
+            column: 0,
+        });
+        let mut parser = Parser::new(iter);
+        let result = parser.parse_content().unwrap();
+        assert_eq!(result, "{value}");
     }
 }
