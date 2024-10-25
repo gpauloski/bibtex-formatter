@@ -1,18 +1,18 @@
-use crate::token::{stringify, Special, Token, TokenInfo};
+use crate::token::{stringify, Special, Token, TokenInfo, Whitespace};
 use crate::{Error, Result};
 use std::iter::Peekable;
 
 #[derive(Debug, PartialEq)]
 pub struct Tag {
-    name: String,
-    content: String,
+    pub name: String,
+    pub content: String,
 }
 
 #[derive(Debug, PartialEq)]
 pub struct Entry {
-    kind: String,
-    key: String,
-    tags: Vec<Tag>,
+    pub kind: String,
+    pub key: String,
+    pub tags: Vec<Tag>,
 }
 
 pub struct Parser<I>
@@ -81,7 +81,14 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
                 } else if token.value == end {
                     nested -= 1;
                 }
-                tokens.push(token.value);
+                if matches!(token.value, Token::Whitespace(_)) {
+                    // Skip adding consecutive whitespace tokens
+                    if !matches!(tokens.last(), Some(&Token::Whitespace(_))) {
+                        tokens.push(Token::Whitespace(Whitespace::Space));
+                    }
+                } else {
+                    tokens.push(token.value);
+                }
             } else {
                 return Err(Error::EndOfTokenStream);
             }
