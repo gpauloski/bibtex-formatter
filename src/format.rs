@@ -1,43 +1,26 @@
-use crate::parse::{Tag, Entry};
+use crate::models::Entry;
+use crate::Result;
+use std::fs::File;
+use std::io::Write;
 
-
-fn format_tag(tag: &Tag) -> String {
-    format!("{} = {{{}}}", tag.name, tag.content)
-}
-
-
-pub fn format_entry(entry: &Entry) -> String {
-    let mut fmt = String::new();
-
-    if entry.tags.is_empty() {
-        return format!("@{}{{{}}}", entry.kind, entry.key)
-    }
-
-    fmt.push_str(&format!("@{}{{{},\n", entry.kind, entry.key));
-
-    for tag in &entry.tags {
-        let tag = format_tag(&tag);
-        fmt.push_str(&format!("    {},\n", &tag));
-    }
-
-    fmt.push('}');
-
-    fmt
-}
-
-
-pub fn format_entries(entries: &Vec<Entry>) -> Vec<String> {
-    entries.iter().map(format_entry).collect()
-}
-
-
-pub fn print_entries(entries: &Vec<Entry>) {
-    let formatted = format_entries(entries);
-
-    for (i, fmt) in formatted.iter().enumerate() {
+pub fn print_entries(entries: &[Entry]) {
+    for (i, entry) in entries.iter().enumerate() {
         if i != 0 {
-            println!("");
+            println!();
         }
-        println!("{}", fmt);
+        println!("{}", entry);
     }
+}
+
+pub fn write_entries(entries: &[Entry], filepath: &str) -> Result<()> {
+    let mut file = File::create(filepath)?;
+
+    for (i, entry) in entries.iter().enumerate() {
+        if i != 0 {
+            file.write_all("\n\n".as_bytes())?;
+        }
+        write!(file, "{}", entry)?;
+    }
+
+    Ok(())
 }

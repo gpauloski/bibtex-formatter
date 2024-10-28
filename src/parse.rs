@@ -1,19 +1,7 @@
+use crate::models::{Entry, Tag};
 use crate::token::{stringify, Special, Token, TokenInfo, Whitespace};
 use crate::{Error, Result};
 use std::iter::Peekable;
-
-#[derive(Debug, PartialEq)]
-pub struct Tag {
-    pub name: String,
-    pub content: String,
-}
-
-#[derive(Debug, PartialEq)]
-pub struct Entry {
-    pub kind: String,
-    pub key: String,
-    pub tags: Vec<Tag>,
-}
 
 pub struct Parser<I>
 where
@@ -161,7 +149,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
             };
         }
 
-        Ok(Entry { kind, key, tags })
+        Ok(Entry::new(kind, key, tags))
     }
 
     fn parse_tag(&mut self) -> Result<Tag> {
@@ -179,7 +167,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
 
         let content = self.parse_content()?;
 
-        Ok(Tag { name, content })
+        Ok(Tag::new(name, content))
     }
 
     pub fn parse(&mut self) -> Result<Vec<Entry>> {
