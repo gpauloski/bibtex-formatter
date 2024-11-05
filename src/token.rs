@@ -1,3 +1,4 @@
+use std::fmt;
 use std::iter::Peekable;
 
 #[derive(Clone, Debug, PartialEq)]
@@ -72,14 +73,45 @@ pub enum Token {
     Whitespace(Whitespace),
 }
 
-#[derive(Clone, Debug)]
-pub struct TokenInfo {
-    pub value: Token,
+impl fmt::Display for Token {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        match self {
+            Self::Special(c) => write!(f, "{}", c.as_char()),
+            Self::Value(s) => write!(f, "{}", s),
+            Self::Whitespace(c) => write!(f, "{}", c.as_char()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Position {
     pub line: u32,
     pub column: u32,
 }
 
+impl Position {
+    pub fn new(line: u32, column: u32) -> Self {
+        Self { line, column }
+    }
+}
+
+impl fmt::Display for Position {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "line {}, column {}", self.line, self.column)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TokenInfo {
+    pub value: Token,
+    pub position: Position,
+}
+
 impl TokenInfo {
+    pub fn new(value: Token, position: Position) -> Self {
+        Self { value, position }
+    }
+
     pub fn is_special(&self) -> bool {
         matches!(self.value, Token::Special(_))
     }
@@ -98,16 +130,16 @@ where
     I: Iterator<Item = char>,
 {
     stream: Peekable<I>,
-    line: u32,
-    column: u32,
+    last: Position,
+    next: Position,
 }
 
 impl<I: Iterator<Item = char>> Tokenizer<I> {
     pub fn new(iter: I) -> Self {
         Tokenizer {
             stream: iter.peekable(),
-            line: 1,
-            column: 0,
+            last: Position { line: 1, column: 1 },
+            next: Position { line: 1, column: 1 },
         }
     }
 
@@ -117,11 +149,16 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
 
     pub fn next(&mut self) -> Option<char> {
         if let Some(next_char) = self.stream.next() {
+            self.last.line = self.next.line;
+            self.last.column = self.next.column;
+
             if matches!(next_char, '\n' | '\r') {
-                self.line += 1;
-                self.column = 0;
+                self.next.line += 1;
+                self.next.column = 1;
+            } else {
+                self.next.column += 1;
             }
-            self.column += 1;
+
             Some(next_char)
         } else {
             None
@@ -133,21 +170,12 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
 
         while let Some(c) = self.next() {
             let token = if let Some(token_type) = Special::from(&c) {
-                TokenInfo {
-                    value: Token::Special(token_type),
-                    line: self.line,
-                    column: self.column,
-                }
+                TokenInfo::new(Token::Special(token_type), self.last)
             } else if let Some(token_type) = Whitespace::from(&c) {
-                TokenInfo {
-                    value: Token::Whitespace(token_type),
-                    line: self.line,
-                    column: self.column,
-                }
+                TokenInfo::new(Token::Whitespace(token_type), self.last)
             } else {
-                let line = self.line;
-                let column = self.column;
                 let mut value = String::new();
+                let position = self.last;
 
                 value.push(c);
                 while let Some(c) = self.peek() {
@@ -158,11 +186,7 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
                     }
                 }
 
-                TokenInfo {
-                    value: Token::Value(value),
-                    line,
-                    column,
-                }
+                TokenInfo::new(Token::Value(value), position)
             };
             tokens.push(token);
         }
@@ -208,34 +232,39 @@ mod tests {
 
     #[test]
     fn test_simple_entry() {
-        let text = "@misc{citekey, author=\"foo\", title = { bar }}";
+        let text = "@misc{citekey,\n  author=\"foo\", \ntitle = { bar }\n}";
         let expected = vec![
-            Token::Special(Special::At),
-            Token::Value("misc".to_string()),
-            Token::Special(Special::BraceLeft),
-            Token::Value("citekey".to_string()),
-            Token::Special(Special::Comma),
-            Token::Whitespace(Whitespace::Space),
-            Token::Value("author".to_string()),
-            Token::Special(Special::Equals),
-            Token::Special(Special::Quote),
-            Token::Value("foo".to_string()),
-            Token::Special(Special::Quote),
-            Token::Special(Special::Comma),
-            Token::Whitespace(Whitespace::Space),
-            Token::Value("title".to_string()),
-            Token::Whitespace(Whitespace::Space),
-            Token::Special(Special::Equals),
-            Token::Whitespace(Whitespace::Space),
-            Token::Special(Special::BraceLeft),
-            Token::Whitespace(Whitespace::Space),
-            Token::Value("bar".to_string()),
-            Token::Whitespace(Whitespace::Space),
-            Token::Special(Special::BraceRight),
-            Token::Special(Special::BraceRight),
+            TokenInfo::new(Token::Special(Special::At), Position::new(1, 1)),
+            TokenInfo::new(Token::Value("misc".to_string()), Position::new(1, 2)),
+            TokenInfo::new(Token::Special(Special::BraceLeft), Position::new(1, 6)),
+            TokenInfo::new(Token::Value("citekey".to_string()), Position::new(1, 7)),
+            TokenInfo::new(Token::Special(Special::Comma), Position::new(1, 14)),
+            TokenInfo::new(Token::Whitespace(Whitespace::NewLine), Position::new(1, 15)),
+            TokenInfo::new(Token::Whitespace(Whitespace::Space), Position::new(2, 1)),
+            TokenInfo::new(Token::Whitespace(Whitespace::Space), Position::new(2, 2)),
+            TokenInfo::new(Token::Value("author".to_string()), Position::new(2, 3)),
+            TokenInfo::new(Token::Special(Special::Equals), Position::new(2, 9)),
+            TokenInfo::new(Token::Special(Special::Quote), Position::new(2, 10)),
+            TokenInfo::new(Token::Value("foo".to_string()), Position::new(2, 11)),
+            TokenInfo::new(Token::Special(Special::Quote), Position::new(2, 14)),
+            TokenInfo::new(Token::Special(Special::Comma), Position::new(2, 15)),
+            TokenInfo::new(Token::Whitespace(Whitespace::Space), Position::new(2, 16)),
+            TokenInfo::new(Token::Whitespace(Whitespace::NewLine), Position::new(2, 17)),
+            TokenInfo::new(Token::Value("title".to_string()), Position::new(3, 1)),
+            TokenInfo::new(Token::Whitespace(Whitespace::Space), Position::new(3, 6)),
+            TokenInfo::new(Token::Special(Special::Equals), Position::new(3, 7)),
+            TokenInfo::new(Token::Whitespace(Whitespace::Space), Position::new(3, 8)),
+            TokenInfo::new(Token::Special(Special::BraceLeft), Position::new(3, 9)),
+            TokenInfo::new(Token::Whitespace(Whitespace::Space), Position::new(3, 10)),
+            TokenInfo::new(Token::Value("bar".to_string()), Position::new(3, 11)),
+            TokenInfo::new(Token::Whitespace(Whitespace::Space), Position::new(3, 14)),
+            TokenInfo::new(Token::Special(Special::BraceRight), Position::new(3, 15)),
+            TokenInfo::new(Token::Whitespace(Whitespace::NewLine), Position::new(3, 16)),
+            TokenInfo::new(Token::Special(Special::BraceRight), Position::new(4, 1)),
         ];
         let mut tokenizer = Tokenizer::new(text.chars());
-        let tokens: Vec<Token> = tokenizer.tokenize().into_iter().map(|t| t.value).collect();
+        let tokens: Vec<TokenInfo> = tokenizer.tokenize();
+
         assert_eq!(tokens, expected);
     }
 

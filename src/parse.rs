@@ -1,5 +1,5 @@
 use crate::models::{Entry, Tag};
-use crate::token::{stringify, Special, Token, TokenInfo, Whitespace};
+use crate::token::{stringify, Position, Special, Token, TokenInfo, Whitespace};
 use crate::{Error, Result};
 use std::iter::Peekable;
 
@@ -8,12 +8,14 @@ where
     I: Iterator<Item = TokenInfo>,
 {
     tokens: Peekable<I>,
+    position: Position,
 }
 
 impl<I: Iterator<Item = TokenInfo>> Parser<I> {
     pub fn new(iter: I) -> Self {
         Parser {
             tokens: iter.peekable(),
+            position: Position { line: 0, column: 0 },
         }
     }
 
@@ -21,7 +23,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
         match self.next_non_whitespace() {
             Some(token_info) if token_info.value == expected => Ok(()),
             Some(token_info) => Err(Error::UnexpectedToken(expected, token_info)),
-            None => Err(Error::EndOfTokenStream),
+            None => Err(Error::EndOfTokenStream(self.position)),
         }
     }
 
@@ -40,19 +42,31 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
     }
 
     fn next(&mut self) -> Option<TokenInfo> {
-        self.tokens.next()
+        if let Some(info) = self.tokens.next() {
+            self.position = info.position;
+            Some(info)
+        } else {
+            None
+        }
     }
 
     fn next_non_whitespace(&mut self) -> Option<TokenInfo> {
-        self.tokens
+        if let Some(info) = self
+            .tokens
             .find(|token_info| !matches!(token_info.value, Token::Whitespace(_)))
+        {
+            self.position = info.position;
+            Some(info)
+        } else {
+            None
+        }
     }
 
     fn parse_content_delim(&mut self, start: Token, end: Token) -> Result<String> {
         match self.next_non_whitespace() {
             Some(token_info) if token_info.value == start => (),
             Some(token_info) => return Err(Error::UnexpectedToken(start, token_info)),
-            None => return Err(Error::EndOfTokenStream),
+            None => return Err(Error::EndOfTokenStream(self.position)),
         }
 
         let mut nested = 0;
@@ -78,7 +92,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
                     tokens.push(token.value);
                 }
             } else {
-                return Err(Error::EndOfTokenStream);
+                return Err(Error::EndOfTokenStream(self.position));
             }
         }
 
@@ -88,7 +102,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
     fn parse_content(&mut self) -> Result<String> {
         let token_info = match self.peek_non_whitespace() {
             Some(token) => token,
-            None => return Err(Error::EndOfTokenStream),
+            None => return Err(Error::EndOfTokenStream(self.position)),
         };
 
         match token_info.value {
@@ -100,13 +114,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
                 Token::Special(Special::Quote),
                 Token::Special(Special::Quote),
             ),
-            _ => Err(Error::ContentParseError(
-                format!(
-                    "Expected opening brace or quote at start of tag contents but found {:?}",
-                    token_info
-                )
-                .to_string(),
-            )),
+            _ => Err(Error::MissingContentOpenToken(token_info)),
         }
     }
 
@@ -115,7 +123,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
 
         let token_info = match self.next_non_whitespace() {
             Some(token) => token,
-            None => return Err(Error::EndOfTokenStream),
+            None => return Err(Error::EndOfTokenStream(self.position)),
         };
 
         let kind = match token_info.value {
@@ -130,7 +138,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
                 Token::Value(key) => key,
                 _ => return Err(Error::MissingCiteKey(token)),
             },
-            None => return Err(Error::EndOfTokenStream),
+            None => return Err(Error::EndOfTokenStream(self.position)),
         };
 
         let mut tags: Vec<Tag> = Vec::new();
@@ -155,7 +163,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
     fn parse_tag(&mut self) -> Result<Tag> {
         let token_info = match self.next_non_whitespace() {
             Some(token) => token,
-            None => return Err(Error::EndOfTokenStream),
+            None => return Err(Error::EndOfTokenStream(self.position)),
         };
 
         let name = match token_info.value {
@@ -206,8 +214,7 @@ mod tests {
         ];
         let iter = tokens.into_iter().map(|token| TokenInfo {
             value: token,
-            line: 0,
-            column: 0,
+            position: Position { line: 0, column: 0 },
         });
         let mut parser = Parser::new(iter);
         let result = parser.parse().unwrap();
@@ -244,8 +251,7 @@ mod tests {
         ];
         let iter = tokens.into_iter().map(|token| TokenInfo {
             value: token,
-            line: 0,
-            column: 0,
+            position: Position { line: 0, column: 0 },
         });
         let mut parser = Parser::new(iter);
         let result = parser.parse().unwrap();
@@ -254,12 +260,12 @@ mod tests {
             key: "citekey".to_string(),
             tags: vec![
                 Tag {
-                    name: "author".to_string(),
-                    content: "foo".to_string(),
-                },
-                Tag {
                     name: "title".to_string(),
                     content: "the,bar".to_string(),
+                },
+                Tag {
+                    name: "author".to_string(),
+                    content: "foo".to_string(),
                 },
             ],
         }];
@@ -275,8 +281,7 @@ mod tests {
         ];
         let iter = tokens.into_iter().map(|token| TokenInfo {
             value: token,
-            line: 0,
-            column: 0,
+            position: Position { line: 0, column: 0 },
         });
         let mut parser = Parser::new(iter);
         let result = parser.parse().unwrap_err();
@@ -293,8 +298,7 @@ mod tests {
         ];
         let iter = tokens.into_iter().map(|token| TokenInfo {
             value: token,
-            line: 0,
-            column: 0,
+            position: Position { line: 0, column: 0 },
         });
         let mut parser = Parser::new(iter);
         let result = parser.parse().unwrap_err();
@@ -314,8 +318,7 @@ mod tests {
         ];
         let iter = tokens.into_iter().map(|token| TokenInfo {
             value: token,
-            line: 0,
-            column: 0,
+            position: Position { line: 0, column: 0 },
         });
         let mut parser = Parser::new(iter);
         let result = parser.parse().unwrap_err();
@@ -325,8 +328,7 @@ mod tests {
                 Token::Special(Special::Equals),
                 TokenInfo {
                     value: Token::Special(Special::BraceRight),
-                    line: 0,
-                    column: 0,
+                    position: Position { line: 0, column: 0 },
                 },
             )
         ));
@@ -343,8 +345,7 @@ mod tests {
         ];
         let iter = tokens.into_iter().map(|token| TokenInfo {
             value: token,
-            line: 0,
-            column: 0,
+            position: Position { line: 0, column: 0 },
         });
         let mut parser = Parser::new(iter);
         let result = parser.parse_content().unwrap();
