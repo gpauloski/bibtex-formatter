@@ -1,12 +1,6 @@
-mod error;
-mod format;
-mod models;
-mod parse;
-mod token;
-
-pub use self::error::{Error, Result};
-use format::{print_entries, write_entries};
-use token::Tokenizer;
+use bibtex_format::format::{print_entries, write_entries};
+use bibtex_format::parse;
+use bibtex_format::token::Tokenizer;
 
 use clap::Parser;
 use std::fs;

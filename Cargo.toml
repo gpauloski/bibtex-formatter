@@ -3,6 +3,17 @@ name = "bibtex-format"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "bibtex-format"
+path = "src/main.rs"
+
+[lib]
+name = "bibtex_format"
+path = "src/lib.rs"
+
 [dependencies]
 clap = { version = "4.5.20", features = ["derive"] }
 derive_more = { version = "1.0.0", features = ["display", "from"] }
+
+[dev-dependencies]
+test-case = "3.3.1"

@@ -147,6 +147,7 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
         self.stream.peek()
     }
 
+    #[allow(clippy::should_implement_trait)]
     pub fn next(&mut self) -> Option<char> {
         if let Some(next_char) = self.stream.next() {
             self.last.line = self.next.line;
