@@ -106,6 +106,13 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
         };
 
         match token_info.value {
+            // Content can take four forms:
+            //   - String delimited by braces
+            //   - String delimited by quotes
+            //   - A single number (used for years)
+            //   - A single word (used for months)
+            // The latter two cases are treated similary: check if the content
+            // of the tag is a single word followed by a comma or closing brace.
             Token::Special(Special::BraceLeft) => self.parse_content_delim(
                 Token::Special(Special::BraceLeft),
                 Token::Special(Special::BraceRight),
@@ -114,6 +121,27 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
                 Token::Special(Special::Quote),
                 Token::Special(Special::Quote),
             ),
+            Token::Value(_) => {
+                let maybe_content_info = self.next_non_whitespace().unwrap();
+                let next_token_info = match self.peek_non_whitespace() {
+                    Some(token) => token,
+                    None => return Err(Error::EndOfTokenStream(self.position)),
+                };
+                if !matches!(
+                    next_token_info.value,
+                    Token::Special(Special::Comma) | Token::Special(Special::BraceRight),
+                ) {
+                    return Err(Error::UnexpectedToken(
+                        Token::Special(Special::Comma),
+                        next_token_info,
+                    ));
+                }
+
+                match maybe_content_info.value {
+                    Token::Value(s) => Ok(s),
+                    _ => panic!(),
+                }
+            }
             _ => Err(Error::MissingContentOpenToken(token_info)),
         }
     }
