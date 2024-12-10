@@ -9,13 +9,25 @@ where
 {
     tokens: Peekable<I>,
     position: Position,
+    remove_empty_tags: bool,
 }
 
 impl<I: Iterator<Item = TokenInfo>> Parser<I> {
-    pub fn new(iter: I) -> Self {
+    // This doesn't implement the Default trait because we do
+    // need at least one argument.
+    pub fn default(iter: I) -> Self {
         Parser {
             tokens: iter.peekable(),
             position: Position { line: 0, column: 0 },
+            remove_empty_tags: true,
+        }
+    }
+
+    pub fn new(iter: I, remove_empty_tags: bool) -> Self {
+        Parser {
+            tokens: iter.peekable(),
+            position: Position { line: 0, column: 0 },
+            remove_empty_tags,
         }
     }
 
@@ -185,6 +197,10 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
             };
         }
 
+        if self.remove_empty_tags {
+            tags.retain(|t| !t.content.trim().is_empty());
+        }
+
         Ok(Entry::new(kind, key, tags))
     }
 
@@ -244,7 +260,7 @@ mod tests {
             value: token,
             position: Position { line: 0, column: 0 },
         });
-        let mut parser = Parser::new(iter);
+        let mut parser = Parser::default(iter);
         let result = parser.parse().unwrap();
         let expected = vec![Entry {
             kind: "misc".to_string(),
@@ -281,7 +297,7 @@ mod tests {
             value: token,
             position: Position { line: 0, column: 0 },
         });
-        let mut parser = Parser::new(iter);
+        let mut parser = Parser::default(iter);
         let result = parser.parse().unwrap();
         let expected = vec![Entry {
             kind: "misc".to_string(),
@@ -311,7 +327,7 @@ mod tests {
             value: token,
             position: Position { line: 0, column: 0 },
         });
-        let mut parser = Parser::new(iter);
+        let mut parser = Parser::default(iter);
         let result = parser.parse().unwrap_err();
         assert!(matches!(result, Error::MissingEntryType(_)));
     }
@@ -328,7 +344,7 @@ mod tests {
             value: token,
             position: Position { line: 0, column: 0 },
         });
-        let mut parser = Parser::new(iter);
+        let mut parser = Parser::default(iter);
         let result = parser.parse().unwrap_err();
         assert!(matches!(result, Error::MissingCiteKey(_)));
     }
@@ -348,7 +364,7 @@ mod tests {
             value: token,
             position: Position { line: 0, column: 0 },
         });
-        let mut parser = Parser::new(iter);
+        let mut parser = Parser::default(iter);
         let result = parser.parse().unwrap_err();
         assert!(matches!(
             result,
@@ -375,8 +391,67 @@ mod tests {
             value: token,
             position: Position { line: 0, column: 0 },
         });
-        let mut parser = Parser::new(iter);
+        let mut parser = Parser::default(iter);
         let result = parser.parse_content().unwrap();
         assert_eq!(result, "{value}");
+    }
+
+    #[test]
+    fn test_remove_empty_tags() {
+        let tokens = vec![
+            Token::Special(Special::At),
+            Token::Value("misc".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("citekey".to_string()),
+            Token::Special(Special::Comma),
+            Token::Value("author".to_string()),
+            Token::Special(Special::Equals),
+            Token::Special(Special::Quote),
+            Token::Special(Special::Quote),
+            Token::Special(Special::BraceRight),
+        ];
+        let iter = tokens.into_iter().map(|token| TokenInfo {
+            value: token,
+            position: Position { line: 0, column: 0 },
+        });
+        let mut parser = Parser::default(iter);
+        let result = parser.parse().unwrap();
+        let expected = vec![Entry {
+            kind: "misc".to_string(),
+            key: "citekey".to_string(),
+            tags: vec![],
+        }];
+        assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn test_retain_empty_tags() {
+        let tokens = vec![
+            Token::Special(Special::At),
+            Token::Value("misc".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("citekey".to_string()),
+            Token::Special(Special::Comma),
+            Token::Value("author".to_string()),
+            Token::Special(Special::Equals),
+            Token::Special(Special::Quote),
+            Token::Special(Special::Quote),
+            Token::Special(Special::BraceRight),
+        ];
+        let iter = tokens.into_iter().map(|token| TokenInfo {
+            value: token,
+            position: Position { line: 0, column: 0 },
+        });
+        let mut parser = Parser::new(iter, false);
+        let result = parser.parse().unwrap();
+        let expected = vec![Entry {
+            kind: "misc".to_string(),
+            key: "citekey".to_string(),
+            tags: vec![Tag {
+                name: "author".to_string(),
+                content: "".to_string(),
+            }],
+        }];
+        assert_eq!(result, expected);
     }
 }

@@ -13,10 +13,12 @@ struct Args {
     /// Input bibtex file.
     #[arg()]
     input: String,
-    /// Output bibtex file. Formatted bibtex is printed to stdout unless this
-    /// option is provided.
+    /// Write formatted bibtex to this file.
     #[arg(short, long)]
     output: Option<String>,
+    /// Retain tags with empty contents.
+    #[arg(short, long)]
+    retain_empty_tags: bool,
 }
 
 fn main() -> ExitCode {
@@ -33,7 +35,7 @@ fn main() -> ExitCode {
     let mut tokenizer = Tokenizer::new(raw_bibtex.chars());
     let tokens = tokenizer.tokenize();
 
-    let mut parser = parse::Parser::new(tokens.into_iter());
+    let mut parser = parse::Parser::new(tokens.into_iter(), !args.retain_empty_tags);
     let mut parsed = match parser.parse() {
         Ok(parsed) => parsed,
         Err(error) => {

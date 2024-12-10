@@ -22,7 +22,10 @@ use std::fs;
 //
 // Notes:
 //   - Leading and trailing whitespace is trimmed from the expected output.
+#[test_case("coalesce-multiline-content" ; "coalesce mutliline contents")]
+#[test_case("non-delimited-content" ; "non-delimited single word contents")]
 #[test_case("quotes-to-braces" ; "convert quotes to braces in tag contents")]
+#[test_case("remove-empty-tags" ; "remove tags with empty content")]
 #[test_case("sort-entries" ; "sort entries in file")]
 #[test_case("sort-tags" ; "sort tags in entry")]
 fn validate_snippets(name: &str) -> Result<()> {
@@ -34,7 +37,7 @@ fn validate_snippets(name: &str) -> Result<()> {
 
     let mut tokenizer = Tokenizer::new(raw_input.chars());
     let tokens = tokenizer.tokenize();
-    let mut parser = Parser::new(tokens.into_iter());
+    let mut parser = Parser::default(tokens.into_iter());
     let mut input_entries = parser.parse()?;
     input_entries.sort();
 
