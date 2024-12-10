@@ -1,4 +1,3 @@
-use bibtex_format::format::{print_entries, write_entries};
 use bibtex_format::parse;
 use bibtex_format::token::Tokenizer;
 
@@ -36,24 +35,24 @@ fn main() -> ExitCode {
     let tokens = tokenizer.tokenize();
 
     let mut parser = parse::Parser::new(tokens.into_iter(), !args.retain_empty_tags);
-    let mut parsed = match parser.parse() {
-        Ok(parsed) => parsed,
+    let mut entries = match parser.parse() {
+        Ok(entries) => entries,
         Err(error) => {
             println!("{}", error);
             return ExitCode::from(2);
         }
     };
 
-    parsed.sort();
+    entries.sort();
 
     if let Some(output) = args.output {
-        let result = write_entries(&parsed, &output);
+        let result = entries.write(&output);
         if let Err(error) = result {
             println!("Error parsing output file: {}", error);
             return ExitCode::from(3);
         }
     } else {
-        print_entries(&parsed);
+        println!("{}", entries);
     }
 
     ExitCode::SUCCESS

@@ -1,4 +1,4 @@
-use crate::models::{Entry, Tag};
+use crate::models::{Entries, Entry, RefEntry, StringEntry, Tag};
 use crate::token::{stringify, Position, Special, Token, TokenInfo, Whitespace};
 use crate::{Error, Result};
 use std::iter::Peekable;
@@ -111,6 +111,24 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
         Ok(stringify(tokens))
     }
 
+    fn parse_tag(&mut self) -> Result<Tag> {
+        let token_info = match self.next_non_whitespace() {
+            Some(token) => token,
+            None => return Err(Error::EndOfTokenStream(self.position)),
+        };
+
+        let name = match token_info.value {
+            Token::Value(name) => name,
+            _ => return Err(Error::MissingTagName(token_info)),
+        };
+
+        self.expect(Token::Special(Special::Equals))?;
+
+        let content = self.parse_content()?;
+
+        Ok(Tag::new(name, content))
+    }
+
     fn parse_content(&mut self) -> Result<String> {
         let token_info = match self.peek_non_whitespace() {
             Some(token) => token,
@@ -158,21 +176,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
         }
     }
 
-    fn parse_entry(&mut self) -> Result<Entry> {
-        self.expect(Token::Special(Special::At))?;
-
-        let token_info = match self.next_non_whitespace() {
-            Some(token) => token,
-            None => return Err(Error::EndOfTokenStream(self.position)),
-        };
-
-        let kind = match token_info.value {
-            Token::Value(kind) => kind,
-            _ => return Err(Error::MissingEntryType(token_info)),
-        };
-
-        self.expect(Token::Special(Special::BraceLeft))?;
-
+    fn parse_ref_body(&mut self, kind: String) -> Result<RefEntry> {
         let key = match self.next_non_whitespace() {
             Some(token) => match token.value {
                 Token::Value(key) => key,
@@ -201,33 +205,60 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
             tags.retain(|t| !t.content.trim().is_empty());
         }
 
-        Ok(Entry::new(kind, key, tags))
+        Ok(RefEntry::new(kind, key, tags))
     }
 
-    fn parse_tag(&mut self) -> Result<Tag> {
+    fn parse_string_body(&mut self) -> Result<StringEntry> {
+        let tag = self.parse_tag()?;
+
+        // Ignore optional trailing comma and check for closing brace.
+        match self.next_non_whitespace() {
+            Some(token) if token.value == Token::Special(Special::BraceRight) => (),
+            Some(token) if token.value == Token::Special(Special::Comma) => {
+                self.expect(Token::Special(Special::BraceRight))?;
+            }
+            Some(token) => {
+                return Err(Error::UnexpectedToken(
+                    Token::Special(Special::BraceRight),
+                    token,
+                ));
+            }
+            None => return Err(Error::EndOfTokenStream(self.position)),
+        }
+
+        Ok(StringEntry::new(tag.name, tag.content))
+    }
+
+    fn parse_entry(&mut self) -> Result<Entry> {
+        self.expect(Token::Special(Special::At))?;
+
         let token_info = match self.next_non_whitespace() {
             Some(token) => token,
             None => return Err(Error::EndOfTokenStream(self.position)),
         };
 
-        let name = match token_info.value {
-            Token::Value(name) => name,
-            _ => return Err(Error::MissingTagName(token_info)),
+        let kind = match token_info.value {
+            Token::Value(kind) => kind.to_lowercase(),
+            _ => return Err(Error::MissingEntryType(token_info)),
         };
 
-        self.expect(Token::Special(Special::Equals))?;
+        self.expect(Token::Special(Special::BraceLeft))?;
 
-        let content = self.parse_content()?;
+        let entry = match kind.as_str() {
+            "string" => Entry::StringEntry(self.parse_string_body()?),
+            _ => Entry::RefEntry(self.parse_ref_body(kind)?),
+        };
 
-        Ok(Tag::new(name, content))
+        Ok(entry)
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Entry>> {
-        let mut entries: Vec<Entry> = Vec::new();
+    pub fn parse(&mut self) -> Result<Entries> {
+        let mut references: Vec<RefEntry> = Vec::new();
+        let mut strings: Vec<StringEntry> = Vec::new();
 
         while let Some(token_info) = self.peek_non_whitespace() {
-            match token_info.value {
-                Token::Special(Special::At) => entries.push(self.parse_entry()?),
+            let entry = match token_info.value {
+                Token::Special(Special::At) => self.parse_entry()?,
                 _ => {
                     return Err(Error::UnexpectedToken(
                         Token::Special(Special::At),
@@ -236,10 +267,18 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
                         self.next().unwrap(),
                     ));
                 }
-            }
+            };
+
+            match entry {
+                Entry::RefEntry(e) => references.push(e),
+                Entry::StringEntry(e) => strings.push(e),
+            };
         }
 
-        Ok(entries)
+        Ok(Entries {
+            references,
+            strings,
+        })
     }
 }
 
@@ -262,12 +301,12 @@ mod tests {
         });
         let mut parser = Parser::default(iter);
         let result = parser.parse().unwrap();
-        let expected = vec![Entry {
+        let expected = vec![RefEntry {
             kind: "misc".to_string(),
             key: "citekey".to_string(),
             tags: Vec::with_capacity(0),
         }];
-        assert_eq!(result, expected);
+        assert_eq!(result.references, expected);
     }
 
     #[test]
@@ -299,7 +338,7 @@ mod tests {
         });
         let mut parser = Parser::default(iter);
         let result = parser.parse().unwrap();
-        let expected = vec![Entry {
+        let expected = vec![RefEntry {
             kind: "misc".to_string(),
             key: "citekey".to_string(),
             tags: vec![
@@ -313,7 +352,7 @@ mod tests {
                 },
             ],
         }];
-        assert_eq!(result, expected);
+        assert_eq!(result.references, expected);
     }
 
     #[test]
@@ -416,12 +455,12 @@ mod tests {
         });
         let mut parser = Parser::default(iter);
         let result = parser.parse().unwrap();
-        let expected = vec![Entry {
+        let expected = vec![RefEntry {
             kind: "misc".to_string(),
             key: "citekey".to_string(),
             tags: vec![],
         }];
-        assert_eq!(result, expected);
+        assert_eq!(result.references, expected);
     }
 
     #[test]
@@ -444,7 +483,7 @@ mod tests {
         });
         let mut parser = Parser::new(iter, false);
         let result = parser.parse().unwrap();
-        let expected = vec![Entry {
+        let expected = vec![RefEntry {
             kind: "misc".to_string(),
             key: "citekey".to_string(),
             tags: vec![Tag {
@@ -452,6 +491,48 @@ mod tests {
                 content: "".to_string(),
             }],
         }];
-        assert_eq!(result, expected);
+        assert_eq!(result.references, expected);
+    }
+
+    #[test]
+    fn test_parse_strings() {
+        let tokens = vec![
+            Token::Special(Special::At),
+            Token::Value("string".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("acm".to_string()),
+            Token::Special(Special::Equals),
+            Token::Special(Special::Quote),
+            Token::Value("Association for Computing Machinery".to_string()),
+            Token::Special(Special::Quote),
+            Token::Special(Special::BraceRight),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Special(Special::At),
+            Token::Value("STRING".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("ieee".to_string()),
+            Token::Special(Special::Equals),
+            Token::Special(Special::Quote),
+            Token::Value("Institute of Electrical and Electronics Engineers".to_string()),
+            Token::Special(Special::Quote),
+            Token::Special(Special::BraceRight),
+        ];
+        let iter = tokens.into_iter().map(|token| TokenInfo {
+            value: token,
+            position: Position { line: 0, column: 0 },
+        });
+        let mut parser = Parser::new(iter, false);
+        let result = parser.parse().unwrap();
+        let expected = vec![
+            StringEntry {
+                name: "acm".to_string(),
+                content: "Association for Computing Machinery".to_string(),
+            },
+            StringEntry {
+                name: "ieee".to_string(),
+                content: "Institute of Electrical and Electronics Engineers".to_string(),
+            },
+        ];
+        assert_eq!(result.strings, expected);
     }
 }

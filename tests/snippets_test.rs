@@ -28,6 +28,7 @@ use std::fs;
 #[test_case("remove-empty-tags" ; "remove tags with empty content")]
 #[test_case("sort-entries" ; "sort entries in file")]
 #[test_case("sort-tags" ; "sort tags in entry")]
+#[test_case("string-entries" ; "format string entry types")]
 fn validate_snippets(name: &str) -> Result<()> {
     let input = format!("tests/snippets/{}.in.bib", name);
     let output = format!("tests/snippets/{}.out.bib", name);
@@ -38,16 +39,10 @@ fn validate_snippets(name: &str) -> Result<()> {
     let mut tokenizer = Tokenizer::new(raw_input.chars());
     let tokens = tokenizer.tokenize();
     let mut parser = Parser::default(tokens.into_iter());
-    let mut input_entries = parser.parse()?;
-    input_entries.sort();
+    let mut entries = parser.parse()?;
+    entries.sort();
 
-    let formatted = input_entries
-        .iter()
-        .map(|e| e.to_string())
-        .collect::<Vec<String>>()
-        .join("\n\n");
-
-    assert_eq!(formatted, expected.trim());
+    assert_eq!(entries.to_string(), expected.trim());
 
     Ok(())
 }
