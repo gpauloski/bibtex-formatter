@@ -8,6 +8,7 @@ pub enum Special {
     BraceRight,
     Comma,
     Equals,
+    Pound,
     Quote,
 }
 
@@ -26,7 +27,7 @@ impl Special {
     }
 
     pub fn is_special(c: &char) -> bool {
-        matches!(c, '@' | '{' | '}' | ',' | '=' | '#', '"')
+        matches!(c, '@' | '{' | '}' | ',' | '=' | '#' | '"')
     }
 
     pub fn as_char(&self) -> char {

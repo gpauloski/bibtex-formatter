@@ -1,4 +1,4 @@
-use crate::models::{Entries, Entry, RefEntry, StringEntry, Tag};
+use crate::models::{Entries, Entry, Content, RefEntry, StringEntry, Tag};
 use crate::token::{stringify, Position, Special, Token, TokenInfo, Whitespace};
 use crate::{Error, Result};
 use std::iter::Peekable;
@@ -128,31 +128,66 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
 
         Ok(stringify(tokens))
     }
-    
-    fn parse_content_sequence(&mut self) -> Result<String> {
-        let mut tokens: Vec<Token> = Vec::new();
 
-        loop {
-            let token = match self.next_non_whitespace() {
-                Some(Token::Special(Special::BraceRight)) => break,
-                Some(Token::Special(Special::Comma)) => break,
-                Some(Token::Special(Special::Pound)) => Token::Special(Special::Pound),
-                Some(Token::Special(Special::Quote)) => {
-                    Token::Value(self.parse_content_delim(
+    fn parse_content_part(&mut self) -> Result<Content> {
+        if let Some(token_info) = self.peek_non_whitespace() {
+            match token_info.value {
+                Token::Special(Special::Quote) =>{
+                    let s = self.parse_content_delim(
                         Token::Special(Special::Quote),
                         Token::Special(Special::Quote),
-                    )?)
+                    )?;
+                    Ok(Content::Quoted(s))
                 },
-                Some(Token::Value(s)) => Token::Value(s),
-                None => return Err(Error::EndOfTokenStream(self.position)),
-            };
-            tokens.push(token);
+                Token::Value(_) => {
+                    // The following lines include an unwrap & panic but
+                    // we know they should be safe because we peeked this
+                    // token and saw it was Token::Value.
+                    let token_info = self.next_non_whitespace().unwrap();
+                    if let Token::Value(s) = token_info.value {
+                        Ok(Content::Value(s))
+                    } else {
+                        panic!()
+                    }
+                },
+                _ => Err(Error::MissingContent(token_info)),
+            }
+        } else {
+            Err(Error::EndOfTokenStream(self.position))
         }
-
-        Ok(tokens.into_iter().map(|t| t.to_string()).join(" "))
     }
 
-    fn parse_content(&mut self) -> Result<String> {
+    fn parse_content_sequence(&mut self) -> Result<Vec<Content>> {
+        let mut parts: Vec<Content> = Vec::new();
+
+        // Get the first word/string since there must be at least one.
+        parts.push(self.parse_content_part()?);
+
+        loop {
+            if let Some(token_info) = self.peek_non_whitespace() {
+                match token_info.value {
+                    Token::Special(Special::BraceRight) => break,
+                    Token::Special(Special::Comma) => break,
+                    Token::Special(Special::Pound) => {
+                        self.expect(Token::Special(Special::Pound))?;
+                        parts.push(self.parse_content_part()?);
+                    }
+                    _ => {
+                        return Err(Error::UnexpectedToken(
+                            Token::Special(Special::Comma),
+                            token_info,
+                        ))
+                    }
+                };
+            } else {
+                return Err(Error::EndOfTokenStream(self.position));
+            }
+        }
+
+        Ok(parts)
+    }
+
+    fn parse_content(&mut self) -> Result<Vec<Content>> {
         let token_info = match self.peek_non_whitespace() {
             Some(token) => token,
             None => return Err(Error::EndOfTokenStream(self.position)),
@@ -165,13 +200,14 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
             //   - A sequence of one or more parts joined by pound (#) signs
             //     where parts can be a number, string variable name, or a
             //     string delimited by quotes.
-            Token::Special(Special::BraceLeft) => self.parse_content_delim(
-                Token::Special(Special::BraceLeft),
-                Token::Special(Special::BraceRight),
-            ),
-            Token::Special(Special::Quote) | Token::Value(_) => {
-                self.parse_content_sequence(),
+            Token::Special(Special::BraceLeft) => {
+                let s = self.parse_content_delim(
+                    Token::Special(Special::BraceLeft),
+                    Token::Special(Special::BraceRight),
+                )?;
+                Ok(vec![Content::Braced(s)])
             },
+            Token::Special(Special::Quote) | Token::Value(_) => self.parse_content_sequence(),
             _ => Err(Error::MissingContent(token_info)),
         }
     }
@@ -202,7 +238,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
         }
 
         if self.remove_empty_tags {
-            tags.retain(|t| !t.content.trim().is_empty());
+            tags.retain(|t| t.content.iter().any(|p| !p.is_empty()));
         }
 
         Ok(RefEntry::new(kind, key, tags))
@@ -344,11 +380,11 @@ mod tests {
             tags: vec![
                 Tag {
                     name: "title".to_string(),
-                    content: "the,bar".to_string(),
+                    content: vec![Content::Braced("the,bar".to_string())],
                 },
                 Tag {
                     name: "author".to_string(),
-                    content: "foo".to_string(),
+                    content: vec![Content::Quoted("foo".to_string())],
                 },
             ],
         }];
@@ -432,7 +468,8 @@ mod tests {
         });
         let mut parser = Parser::default(iter);
         let result = parser.parse_content().unwrap();
-        assert_eq!(result, "{value}");
+        let expected = vec![Content::Braced("{value}".to_string())];
+        assert_eq!(result, expected);
     }
 
     #[test]
@@ -488,7 +525,7 @@ mod tests {
             key: "citekey".to_string(),
             tags: vec![Tag {
                 name: "author".to_string(),
-                content: "".to_string(),
+                content: vec![Content::Quoted("".to_string())],
             }],
         }];
         assert_eq!(result.references, expected);
@@ -526,13 +563,39 @@ mod tests {
         let expected = vec![
             StringEntry {
                 name: "acm".to_string(),
-                content: "Association for Computing Machinery".to_string(),
+                content: vec![Content::Quoted("Association for Computing Machinery".to_string())],
             },
             StringEntry {
                 name: "ieee".to_string(),
-                content: "Institute of Electrical and Electronics Engineers".to_string(),
+                content: vec![Content::Quoted("Institute of Electrical and Electronics Engineers".to_string())],
             },
         ];
         assert_eq!(result.strings, expected);
+    }
+    
+    #[test]
+    fn test_content_sequence() {
+        let tokens = vec![
+            Token::Value("var".to_string()),
+            Token::Special(Special::Pound),
+            Token::Special(Special::Quote),
+            Token::Value("a string".to_string()),
+            Token::Special(Special::Quote),
+            Token::Special(Special::Pound),
+            Token::Value("var".to_string()),
+            Token::Special(Special::Comma),
+        ];
+        let iter = tokens.into_iter().enumerate().map(|(i, token)| TokenInfo {
+            value: token,
+            position: Position { line: i as u32, column: 0 },
+        });
+        let mut parser = Parser::new(iter, false);
+        let content = parser.parse_content_sequence().unwrap();
+        let expected = vec![
+            Content::Value("var".to_string()),
+            Content::Quoted("a string".to_string()),
+            Content::Value("var".to_string()),
+        ];
+        assert_eq!(content, expected);
     }
 }

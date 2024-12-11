@@ -5,20 +5,68 @@ use std::fs::File;
 use std::io::Write;
 
 #[derive(Debug, Eq, PartialEq)]
+pub enum Content {
+    Braced(String),
+    Quoted(String),
+    Value(String),
+}
+
+impl Content {
+    pub fn is_empty(&self) -> bool {
+        match self {
+            Self::Braced(s) | Self::Quoted(s) | Self::Value(s) => s.trim().is_empty(),
+        }
+    }
+}
+
+impl fmt::Display for Content {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Braced(s) => write!(f, "{{{}}}", s),
+            Self::Quoted(s) => write!(f, "\"{}\"", s),
+            Self::Value(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct ContentParts(Vector<Content>);
+
+impl fmt::Display for ContentParts {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let content = match self.0.len() {
+            0 => "{}".to_string(),
+            1 => match self.0.first().unwrap() {
+                Content::Braced(s) | Content::Quoted(s) => format!("{{{}}}", s),
+                Content::Value(s) => s.clone(),
+            }
+            _ => {
+                self.0
+                    .iter()
+                    .map(|part| part.to_string())
+                    .collect::<Vec<String>>()
+                    .join(" # ")
+            },
+        };
+        write!(f, "{}", content);
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
 pub struct Tag {
     pub name: String,
-    pub content: String,
+    pub content: ContentParts,
 }
 
 impl Tag {
-    pub fn new(name: String, content: String) -> Self {
-        Tag { name, content }
+    pub fn new(name: String, content: Vec<Content>) -> Self {
+        Tag { name, ContentParts(content) }
     }
 }
 
 impl fmt::Display for Tag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} = {{{}}}", self.name.to_lowercase(), self.content)
+        write!(f, "{} = {}", self.name.to_lowercase(), content)
     }
 }
 
@@ -141,12 +189,12 @@ impl Ord for RefEntry {
 #[derive(Debug, Eq, PartialEq)]
 pub struct StringEntry {
     pub name: String,
-    pub content: String,
+    pub content: ContentParts,
 }
 
 impl StringEntry {
-    pub fn new(name: String, content: String) -> Self {
-        Self { name, content }
+    pub fn new(name: String, content: Vec<Content>) -> Self {
+        Self { name, ContentParts(content) }
     }
 }
 
