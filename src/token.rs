@@ -8,6 +8,7 @@ pub enum Special {
     BraceRight,
     Comma,
     Equals,
+    Pound,
     Quote,
 }
 
@@ -19,13 +20,14 @@ impl Special {
             '}' => Some(Special::BraceRight),
             ',' => Some(Special::Comma),
             '=' => Some(Special::Equals),
+            '#' => Some(Special::Pound),
             '"' => Some(Special::Quote),
             _ => None,
         }
     }
 
     pub fn is_special(c: &char) -> bool {
-        matches!(c, '@' | '{' | '}' | ',' | '=' | '"')
+        matches!(c, '@' | '{' | '}' | ',' | '=' | '#' | '"')
     }
 
     pub fn as_char(&self) -> char {
@@ -35,6 +37,7 @@ impl Special {
             Self::BraceRight => '}',
             Self::Comma => ',',
             Self::Equals => '=',
+            Self::Pound => '#',
             Self::Quote => '"',
         }
     }

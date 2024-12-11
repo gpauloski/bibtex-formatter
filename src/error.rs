@@ -8,7 +8,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 pub enum Error {
     EndOfTokenStream(Position),
     MissingCiteKey(TokenInfo),
-    MissingContentOpenToken(TokenInfo),
+    MissingContent(TokenInfo),
     MissingEntryType(TokenInfo),
     MissingTagName(TokenInfo),
     UnexpectedToken(Token, TokenInfo),
@@ -37,9 +37,9 @@ impl core::fmt::Display for Error {
                 "Expected cite key at {}; found `{}`",
                 info.position, info.value
             ),
-            Self::MissingContentOpenToken(info) => write!(
+            Self::MissingContent(info) => write!(
                 fmt,
-                "Expected {{ or \" to start content of tag at {}; found `{}`",
+                "Expected tag content at {}; found `{}`",
                 info.position, info.value,
             ),
             Self::MissingEntryType(info) => write!(

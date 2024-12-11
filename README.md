@@ -15,7 +15,7 @@ The following formatting rules are applied (based on my personal preference :)):
 * The title and author tags are first in an entry followed by the remaining tags sorted by name.
 * Braces are used for tag content rather than quotes.
 
-Learn more about the bibtex format at [bibtex.org](https://www.bibtex.org/Format/).
+Learn more about the bibtex format at [bibtex.org](https://www.bibtex.org/Format/) and in the [nice summary](https://maverick.inria.fr/~Xavier.Decoret/resources/xdkbibtex/bibtex_summary.html).
 
 **Limitations:** The following are untested/unsupported but will be eventually.
 * `@STRING`, `@PREAMBLE`, and `@COMMENT` entry types.
@@ -101,7 +101,10 @@ bibtex-format references.bib --output formatted.bib
 
 ## TODO
 
-- [ ] Add end to end tests.
+- [x] Add end to end tests.
 - [ ] Support non-reference entry types (e.g., `@comment`).
 - [ ] Support string concatenation when tag content is quoted.
 - [ ] Title formatting: insert `{}` around capitalized characters.
+- [ ] Add internal assertion error to enum to panics/unwraps can be removed.
+- [ ] Remove unwraps from tests
+- [ ] Refactor parser structs to better reflect real layout
