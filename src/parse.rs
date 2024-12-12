@@ -17,7 +17,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
     // This doesn't implement the Default trait because we do
     // need at least one argument.
     pub fn default(iter: I) -> Self {
-        Parser {
+        Self {
             tokens: iter.peekable(),
             position: Position { line: 0, column: 0 },
             remove_empty_tags: true,
@@ -25,7 +25,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
     }
 
     pub fn new(iter: I, remove_empty_tags: bool) -> Self {
-        Parser {
+        Self {
             tokens: iter.peekable(),
             position: Position { line: 0, column: 0 },
             remove_empty_tags,
@@ -222,10 +222,10 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
                     match seq.next() {
                         Some(Part::Quoted(s)) => Ok(Value::Single(s.trim().to_string())),
                         Some(Part::Value(s)) => {
-                            let value = match s.parse::<u64>() {
-                                Ok(v) => Value::Integer(v),
-                                Err(_) => Value::Sequence(Sequence::new(vec![Part::Value(s)])),
-                            };
+                            let value = s.parse::<u64>().map_or_else(
+                                |_| Value::Sequence(Sequence::new(vec![Part::Value(s)])),
+                                Value::Integer,
+                            );
                             Ok(value)
                         }
                         None => Err(Error::InternalAssertion(

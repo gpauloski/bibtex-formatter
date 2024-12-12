@@ -17,13 +17,13 @@ pub enum EntryType {
 impl Display for EntryType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::StringEntry(e) => write!(f, "{}", e),
-            Self::RefEntry(e) => write!(f, "{}", e),
+            Self::StringEntry(e) => write!(f, "{e}"),
+            Self::RefEntry(e) => write!(f, "{e}"),
         }
     }
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 pub struct Entries(Vec<EntryType>);
 
 impl Entries {
@@ -37,7 +37,7 @@ impl Entries {
 
     pub fn write(&self, filepath: &str) -> Result<()> {
         let mut file = File::create(filepath)?;
-        write!(file, "{}", self)?;
+        write!(file, "{self}")?;
         Ok(())
     }
 }
@@ -47,14 +47,13 @@ impl Display for Entries {
         let mut iter = self.0.iter().peekable();
         while let Some(entry) = iter.next() {
             if let Some(next) = iter.peek() {
-                writeln!(f, "{}", entry)?;
+                writeln!(f, "{entry}")?;
 
-                match next {
-                    EntryType::RefEntry(_) => writeln!(f)?,
-                    _ => (),
+                if let EntryType::RefEntry(_) = next {
+                    writeln!(f)?;
                 }
             } else {
-                write!(f, "{}", entry)?;
+                write!(f, "{entry}")?;
             }
         }
 
@@ -112,7 +111,7 @@ impl Ord for RefEntry {
 pub struct StringEntry(Tag);
 
 impl StringEntry {
-    pub fn new(tag: Tag) -> Self {
+    pub const fn new(tag: Tag) -> Self {
         Self(tag)
     }
 }
@@ -122,8 +121,8 @@ impl Entry for StringEntry {}
 impl Display for StringEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let value = match &self.0.value {
-            Value::Single(s) => format!("\"{}\"", s),
-            Value::Integer(v) => format!("\"{}\"", v),
+            Value::Single(s) => format!("\"{s}\""),
+            Value::Integer(v) => format!("\"{v}\""),
             Value::Sequence(s) => s.to_string(),
         };
         write!(f, "@STRING{{{} = {}}}", self.0.name, value)

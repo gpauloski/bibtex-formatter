@@ -9,7 +9,7 @@ pub struct Tag {
 
 impl Tag {
     pub fn new(name: String, value: Value) -> Self {
-        Tag {
+        Self {
             name: name.to_lowercase(),
             value,
         }
@@ -67,9 +67,9 @@ impl Value {
 impl fmt::Display for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Single(s) => write!(f, "{{{}}}", s),
-            Self::Integer(s) => write!(f, "{}", s),
-            Self::Sequence(s) => write!(f, "{}", s),
+            Self::Single(s) => write!(f, "{{{s}}}"),
+            Self::Integer(s) => write!(f, "{s}"),
+            Self::Sequence(s) => write!(f, "{s}"),
         }
     }
 }
@@ -83,7 +83,7 @@ impl Sequence {
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.iter().all(|part| part.is_empty())
+        self.0.iter().all(Part::is_empty)
     }
 
     pub fn len(&self) -> usize {
@@ -96,10 +96,10 @@ impl fmt::Display for Sequence {
         let content = self
             .0
             .iter()
-            .map(|part| part.to_string())
+            .map(std::string::ToString::to_string)
             .collect::<Vec<String>>()
             .join(" # ");
-        write!(f, "{}", content)
+        write!(f, "{content}")
     }
 }
 
@@ -128,7 +128,7 @@ impl Part {
 impl fmt::Display for Part {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Quoted(s) => write!(f, "\"{}\"", s),
+            Self::Quoted(s) => write!(f, "\"{s}\""),
             Self::Value(v) => write!(f, "{}", v.to_lowercase()),
         }
     }

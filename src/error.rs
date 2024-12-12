@@ -31,10 +31,10 @@ impl core::fmt::Display for Error {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
         match self {
             Self::EndOfTokenStream(position) => {
-                write!(fmt, "Unexpected end of token stream at {}", position)
+                write!(fmt, "Unexpected end of token stream at {position}")
             }
             Self::InternalAssertion(message) => {
-                write!(fmt, "Internal assertion error: {}", message)
+                write!(fmt, "Internal assertion error: {message}")
             }
             Self::MissingCiteKey(info) => write!(
                 fmt,
