@@ -1,4 +1,4 @@
-use crate::models::{Entries, EntryType, RefEntry, StringEntry};
+use crate::models::{CommentEntry, Entries, EntryType, RefEntry, StringEntry};
 use crate::models::{Part, Sequence, Tag, Value};
 use crate::token::{stringify, Position, Special, Token, TokenInfo, Whitespace};
 use crate::{Error, Result};
@@ -113,9 +113,8 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
             _ => return Err(Error::MissingEntryType(token_info)),
         };
 
-        self.expect(Token::Special(Special::BraceLeft))?;
-
         let entry = match kind.as_str() {
+            "comment" => EntryType::CommentEntry(self.parse_comment_entry()?),
             "string" => EntryType::StringEntry(self.parse_string_entry()?),
             _ => EntryType::RefEntry(self.parse_ref_entry(kind)?),
         };
@@ -123,7 +122,28 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
         Ok(entry)
     }
 
+    fn parse_comment_entry(&mut self) -> Result<CommentEntry> {
+        self.expect(Token::Special(Special::BraceLeft))?;
+
+        let mut tokens: Vec<Token> = Vec::new();
+
+        loop {
+            if let Some(token_info) = self.next() {
+                match token_info.value {
+                    Token::Special(Special::BraceRight) => break,
+                    value => tokens.push(value),
+                }
+            } else {
+                return Err(Error::EndOfTokenStream(self.position));
+            }
+        }
+
+        Ok(CommentEntry::new(stringify(tokens)))
+    }
+
     fn parse_string_entry(&mut self) -> Result<StringEntry> {
+        self.expect(Token::Special(Special::BraceLeft))?;
+
         let tag = self.parse_tag()?;
 
         // Ignore optional trailing comma and check for closing brace.
@@ -145,6 +165,8 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
     }
 
     fn parse_ref_entry(&mut self, kind: String) -> Result<RefEntry> {
+        self.expect(Token::Special(Special::BraceLeft))?;
+
         let key = match self.next_non_whitespace() {
             Some(token) => match token.value {
                 Token::Value(key) => key,
@@ -352,6 +374,26 @@ mod tests {
                 column: 0,
             },
         })
+    }
+
+    #[test]
+    fn test_parse_comment_entry() -> Result<()> {
+        let tokens = vec![
+            Token::Special(Special::At),
+            Token::Value("comment".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Whitespace(Whitespace::Space),
+            Token::Value("value".to_string()),
+            Token::Whitespace(Whitespace::Space),
+            Token::Special(Special::BraceRight),
+        ];
+        let mut parser = Parser::default(as_iter(tokens));
+
+        let entry = parser.parse_entry()?;
+        let expected = EntryType::CommentEntry(CommentEntry::new(" value ".to_string()));
+        assert_eq!(entry, expected);
+
+        Ok(())
     }
 
     #[test]

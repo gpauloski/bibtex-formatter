@@ -10,6 +10,7 @@ pub trait Entry: Debug + Display + Ord + PartialOrd {}
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum EntryType {
+    CommentEntry(CommentEntry),
     StringEntry(StringEntry),
     RefEntry(RefEntry),
 }
@@ -17,6 +18,7 @@ pub enum EntryType {
 impl Display for EntryType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::CommentEntry(e) => write!(f, "{e}"),
             Self::StringEntry(e) => write!(f, "{e}"),
             Self::RefEntry(e) => write!(f, "{e}"),
         }
@@ -104,6 +106,35 @@ impl PartialOrd for RefEntry {
 impl Ord for RefEntry {
     fn cmp(&self, other: &Self) -> Ordering {
         self.key.cmp(&other.key)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct CommentEntry(String);
+
+impl CommentEntry {
+    pub const fn new(body: String) -> Self {
+        Self(body)
+    }
+}
+
+impl Entry for CommentEntry {}
+
+impl Display for CommentEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "@COMMENT{{{}}}", self.0)
+    }
+}
+
+impl PartialOrd for CommentEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for CommentEntry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.0.cmp(&other.0)
     }
 }
 
