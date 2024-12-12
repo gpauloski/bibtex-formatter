@@ -28,6 +28,7 @@ use std::fs;
 #[test_case("remove-empty-tags" ; "remove tags with empty content")]
 #[test_case("sort-entries" ; "sort entries in file")]
 #[test_case("sort-tags" ; "sort tags in entry")]
+#[test_case("string-concat" ; "format entries with string concatentation")]
 #[test_case("string-entries" ; "format string entry types")]
 fn validate_snippets(name: &str) -> Result<()> {
     let input = format!("tests/snippets/{}.in.bib", name);

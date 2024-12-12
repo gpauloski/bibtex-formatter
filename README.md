@@ -103,8 +103,8 @@ bibtex-format references.bib --output formatted.bib
 
 - [x] Add end to end tests.
 - [ ] Support non-reference entry types (e.g., `@comment`).
-- [ ] Support string concatenation when tag content is quoted.
-- [ ] Title formatting: insert `{}` around capitalized characters.
+- [x] Support string concatenation when tag content is quoted.
 - [x] Add internal assertion error to enum to panics/unwraps can be removed.
 - [x] Remove unwraps from tests
 - [x] Refactor parser structs to better reflect real layout
+- [ ] Title formatting: insert `{}` around capitalized characters.
