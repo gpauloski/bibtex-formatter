@@ -185,8 +185,9 @@ impl<I: Iterator<Item = char>> Tokenizer<I> {
                 while let Some(c) = self.peek() {
                     if Special::is_special(c) || c.is_whitespace() {
                         break;
-                    } else {
-                        value.push(self.next().unwrap())
+                    }
+                    if let Some(c) = self.next() {
+                        value.push(c)
                     }
                 }
 

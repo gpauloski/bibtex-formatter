@@ -105,6 +105,6 @@ bibtex-format references.bib --output formatted.bib
 - [ ] Support non-reference entry types (e.g., `@comment`).
 - [ ] Support string concatenation when tag content is quoted.
 - [ ] Title formatting: insert `{}` around capitalized characters.
-- [ ] Add internal assertion error to enum to panics/unwraps can be removed.
-- [ ] Remove unwraps from tests
-- [ ] Refactor parser structs to better reflect real layout
+- [x] Add internal assertion error to enum to panics/unwraps can be removed.
+- [x] Remove unwraps from tests
+- [x] Refactor parser structs to better reflect real layout

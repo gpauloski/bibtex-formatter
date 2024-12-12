@@ -7,6 +7,7 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, From)]
 pub enum Error {
     EndOfTokenStream(Position),
+    InternalAssertion(String),
     MissingCiteKey(TokenInfo),
     MissingContent(TokenInfo),
     MissingEntryType(TokenInfo),
@@ -31,6 +32,9 @@ impl core::fmt::Display for Error {
         match self {
             Self::EndOfTokenStream(position) => {
                 write!(fmt, "Unexpected end of token stream at {}", position)
+            }
+            Self::InternalAssertion(message) => {
+                write!(fmt, "Internal assertion error: {}", message)
             }
             Self::MissingCiteKey(info) => write!(
                 fmt,

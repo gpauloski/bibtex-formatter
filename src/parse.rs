@@ -82,12 +82,16 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
             let entry = match token_info.value {
                 Token::Special(Special::At) => self.parse_entry()?,
                 _ => {
-                    return Err(Error::UnexpectedToken(
-                        Token::Special(Special::At),
-                        // Should never be None because peek_non_whitespace()
-                        // returned Some(_).
-                        self.next().unwrap(),
-                    ));
+                    if let Some(token_info) = self.next() {
+                        return Err(Error::UnexpectedToken(
+                            Token::Special(Special::At),
+                            token_info,
+                        ));
+                    } else {
+                        return Err(Error::InternalAssertion(
+                            "Peeked token return none.".to_string(),
+                        ));
+                    };
                 }
             };
             entries.push(entry);
@@ -215,16 +219,18 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
             Token::Special(Special::Quote) | Token::Value(_) => {
                 let mut seq = self.parse_tag_value_sequence()?;
                 if seq.len() == 1 {
-                    let part = seq.next().unwrap();
-                    match part {
-                        Part::Quoted(s) => Ok(Value::Single(s.trim().to_string())),
-                        Part::Value(s) => {
+                    match seq.next() {
+                        Some(Part::Quoted(s)) => Ok(Value::Single(s.trim().to_string())),
+                        Some(Part::Value(s)) => {
                             let value = match s.parse::<u64>() {
                                 Ok(v) => Value::Integer(v),
                                 Err(_) => Value::Sequence(Sequence::new(vec![Part::Value(s)])),
                             };
                             Ok(value)
                         }
+                        None => Err(Error::InternalAssertion(
+                            "Failed to get item from sequence of length one.".to_string(),
+                        )),
                     }
                 } else {
                     Ok(Value::Sequence(seq))
@@ -275,14 +281,18 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
                     Ok(Part::Quoted(s))
                 }
                 Token::Value(_) => {
-                    // The following lines include an unwrap & panic but
-                    // we know they should be safe because we peeked this
-                    // token and saw it was Token::Value.
-                    let token_info = self.next_non_whitespace().unwrap();
-                    if let Token::Value(s) = token_info.value {
-                        Ok(Part::Value(s.to_lowercase()))
+                    if let Some(token_info) = self.next_non_whitespace() {
+                        if let Token::Value(s) = token_info.value {
+                            Ok(Part::Value(s.to_lowercase()))
+                        } else {
+                            Err(Error::InternalAssertion(
+                                "Token should be value type.".to_string(),
+                            ))
+                        }
                     } else {
-                        panic!()
+                        Err(Error::InternalAssertion(
+                            "Peeked token return none.".to_string(),
+                        ))
                     }
                 }
                 _ => Err(Error::MissingContent(token_info)),
