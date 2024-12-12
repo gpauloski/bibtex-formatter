@@ -7,8 +7,9 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug, From)]
 pub enum Error {
     EndOfTokenStream(Position),
+    InternalAssertion(String),
     MissingCiteKey(TokenInfo),
-    MissingContentOpenToken(TokenInfo),
+    MissingContent(TokenInfo),
     MissingEntryType(TokenInfo),
     MissingTagName(TokenInfo),
     UnexpectedToken(Token, TokenInfo),
@@ -30,16 +31,19 @@ impl core::fmt::Display for Error {
     fn fmt(&self, fmt: &mut core::fmt::Formatter) -> core::result::Result<(), core::fmt::Error> {
         match self {
             Self::EndOfTokenStream(position) => {
-                write!(fmt, "Unexpected end of token stream at {}", position)
+                write!(fmt, "Unexpected end of token stream at {position}")
+            }
+            Self::InternalAssertion(message) => {
+                write!(fmt, "Internal assertion error: {message}")
             }
             Self::MissingCiteKey(info) => write!(
                 fmt,
                 "Expected cite key at {}; found `{}`",
                 info.position, info.value
             ),
-            Self::MissingContentOpenToken(info) => write!(
+            Self::MissingContent(info) => write!(
                 fmt,
-                "Expected {{ or \" to start content of tag at {}; found `{}`",
+                "Expected tag content at {}; found `{}`",
                 info.position, info.value,
             ),
             Self::MissingEntryType(info) => write!(

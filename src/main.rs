@@ -26,7 +26,7 @@ fn main() -> ExitCode {
     let raw_bibtex = match fs::read_to_string(args.input) {
         Ok(raw) => raw,
         Err(error) => {
-            println!("Error parsing input file: {}", error);
+            println!("Error parsing input file: {error}");
             return ExitCode::from(1);
         }
     };
@@ -38,7 +38,7 @@ fn main() -> ExitCode {
     let mut entries = match parser.parse() {
         Ok(entries) => entries,
         Err(error) => {
-            println!("{}", error);
+            println!("{error}");
             return ExitCode::from(2);
         }
     };
@@ -48,11 +48,11 @@ fn main() -> ExitCode {
     if let Some(output) = args.output {
         let result = entries.write(&output);
         if let Err(error) = result {
-            println!("Error parsing output file: {}", error);
+            println!("Error parsing output file: {error}");
             return ExitCode::from(3);
         }
     } else {
-        println!("{}", entries);
+        println!("{entries}");
     }
 
     ExitCode::SUCCESS

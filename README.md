@@ -3,8 +3,8 @@
 An opinionated bibtex parser and formatter written in Rust.
 
 > [!WARNING]
-> This is still being tested and has some known limitations (see below).
-> Be careful to not overwrite your source bibtex.
+> While I strive to write perfect code :), there might be edge cases
+> so be careful to not overwrite your source bibtex.
 
 > [!TIP]
 > Please open an issue if you find an edge case or bug!
@@ -15,11 +15,7 @@ The following formatting rules are applied (based on my personal preference :)):
 * The title and author tags are first in an entry followed by the remaining tags sorted by name.
 * Braces are used for tag content rather than quotes.
 
-Learn more about the bibtex format at [bibtex.org](https://www.bibtex.org/Format/).
-
-**Limitations:** The following are untested/unsupported but will be eventually.
-* `@STRING`, `@PREAMBLE`, and `@COMMENT` entry types.
-* String concatentation (e.g., `title = "{Bib}" # "\TeX"`).
+Learn more about the bibtex format at [bibtex.org](https://www.bibtex.org/Format/) and in this [nice summary](https://maverick.inria.fr/~Xavier.Decoret/resources/xdkbibtex/bibtex_summary.html).
 
 ## Installation
 
@@ -101,7 +97,5 @@ bibtex-format references.bib --output formatted.bib
 
 ## TODO
 
-- [ ] Add end to end tests.
-- [ ] Support non-reference entry types (e.g., `@comment`).
-- [ ] Support string concatenation when tag content is quoted.
 - [ ] Title formatting: insert `{}` around capitalized characters.
+- [ ] Add CLI params for configuring formatting (e.g., remove comments, sort/don't sort)
