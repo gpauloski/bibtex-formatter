@@ -1,4 +1,4 @@
-use crate::models::{CommentEntry, Entries, EntryType, RefEntry, StringEntry};
+use crate::models::{CommentEntry, Entries, EntryType, PreambleEntry, RefEntry, StringEntry};
 use crate::models::{Part, Sequence, Tag, Value};
 use crate::token::{stringify, Position, Special, Token, TokenInfo, Whitespace};
 use crate::{Error, Result};
@@ -115,6 +115,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
 
         let entry = match kind.as_str() {
             "comment" => EntryType::CommentEntry(self.parse_comment_entry()?),
+            "preamble" => EntryType::PreambleEntry(self.parse_preamble_entry()?),
             "string" => EntryType::StringEntry(self.parse_string_entry()?),
             _ => EntryType::RefEntry(self.parse_ref_entry(kind)?),
         };
@@ -139,6 +140,13 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
         }
 
         Ok(CommentEntry::new(stringify(tokens)))
+    }
+
+    fn parse_preamble_entry(&mut self) -> Result<PreambleEntry> {
+        self.expect(Token::Special(Special::BraceLeft))?;
+        let seq = self.parse_tag_value_sequence()?;
+        self.expect(Token::Special(Special::BraceRight))?;
+        Ok(PreambleEntry::new(seq))
     }
 
     fn parse_string_entry(&mut self) -> Result<StringEntry> {
@@ -391,6 +399,34 @@ mod tests {
 
         let entry = parser.parse_entry()?;
         let expected = EntryType::CommentEntry(CommentEntry::new(" value ".to_string()));
+        assert_eq!(entry, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_preamble_entries() -> Result<()> {
+        let tokens = vec![
+            Token::Special(Special::At),
+            Token::Value("preamble".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Special(Special::Quote),
+            Token::Value("test".to_string()),
+            Token::Whitespace(Whitespace::Space),
+            Token::Value("string".to_string()),
+            Token::Special(Special::Quote),
+            Token::Special(Special::Pound),
+            Token::Value("value".to_string()),
+            Token::Special(Special::BraceRight),
+        ];
+        let mut parser = Parser::default(as_iter(tokens));
+
+        let entry = parser.parse_entry()?;
+        let seq = Sequence::new(vec![
+            Part::Quoted("test string".to_string()),
+            Part::Value("value".to_string()),
+        ]);
+        let expected = EntryType::PreambleEntry(PreambleEntry::new(seq));
         assert_eq!(entry, expected);
 
         Ok(())

@@ -1,23 +1,26 @@
-use crate::models::{Tag, Value};
+use crate::models::{Sequence, Tag, Value};
 use crate::Result;
 use std::cmp::{Ord, Ordering, PartialOrd};
 use std::fmt;
 use std::fmt::{Debug, Display};
 use std::fs::File;
 use std::io::Write;
+use std::mem::discriminant;
 
 pub trait Entry: Debug + Display + Ord + PartialOrd {}
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum EntryType {
-    CommentEntry(CommentEntry),
+    PreambleEntry(PreambleEntry),
     StringEntry(StringEntry),
+    CommentEntry(CommentEntry),
     RefEntry(RefEntry),
 }
 
 impl Display for EntryType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::PreambleEntry(e) => write!(f, "{e}"),
             Self::CommentEntry(e) => write!(f, "{e}"),
             Self::StringEntry(e) => write!(f, "{e}"),
             Self::RefEntry(e) => write!(f, "{e}"),
@@ -51,7 +54,9 @@ impl Display for Entries {
             if let Some(next) = iter.peek() {
                 writeln!(f, "{entry}")?;
 
-                if let EntryType::RefEntry(_) = next {
+                if discriminant(entry) != discriminant(next) {
+                    writeln!(f)?;
+                } else if let EntryType::RefEntry(_) = next {
                     writeln!(f)?;
                 }
             } else {
@@ -135,6 +140,36 @@ impl PartialOrd for CommentEntry {
 impl Ord for CommentEntry {
     fn cmp(&self, other: &Self) -> Ordering {
         self.0.cmp(&other.0)
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+pub struct PreambleEntry(Sequence);
+
+impl PreambleEntry {
+    pub const fn new(parts: Sequence) -> Self {
+        Self(parts)
+    }
+}
+
+impl Entry for PreambleEntry {}
+
+impl Display for PreambleEntry {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "@PREAMBLE{{{}}}", self.0)
+    }
+}
+
+impl PartialOrd for PreambleEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for PreambleEntry {
+    fn cmp(&self, _other: &Self) -> Ordering {
+        // We want to retain the order or preambles.
+        Ordering::Equal
     }
 }
 
