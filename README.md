@@ -14,6 +14,7 @@ The following formatting rules are applied (based on my personal preference :)):
 * Entries are sorted by citation key.
 * The title and author tags are first in an entry followed by the remaining tags sorted by name.
 * Braces are used for tag content rather than quotes.
+* Capitalized words in title tags are wrapped in braces to preserve formatting.
 
 Learn more about the bibtex format at [bibtex.org](https://www.bibtex.org/Format/) and in this [nice summary](https://maverick.inria.fr/~Xavier.Decoret/resources/xdkbibtex/bibtex_summary.html).
 
@@ -94,8 +95,3 @@ bibtex-format references.bib --output formatted.bib
     year = {2020},
 }
 ```
-
-## TODO
-
-- [ ] Title formatting: insert `{}` around capitalized characters.
-- [ ] Add CLI params for configuring formatting (e.g., remove comments, sort/don't sort)

@@ -10,25 +10,13 @@ where
 {
     tokens: Peekable<I>,
     position: Position,
-    remove_empty_tags: bool,
 }
 
 impl<I: Iterator<Item = TokenInfo>> Parser<I> {
-    // This doesn't implement the Default trait because we do
-    // need at least one argument.
-    pub fn default(iter: I) -> Self {
+    pub fn new(iter: I) -> Self {
         Self {
             tokens: iter.peekable(),
             position: Position { line: 0, column: 0 },
-            remove_empty_tags: true,
-        }
-    }
-
-    pub fn new(iter: I, remove_empty_tags: bool) -> Self {
-        Self {
-            tokens: iter.peekable(),
-            position: Position { line: 0, column: 0 },
-            remove_empty_tags,
         }
     }
 
@@ -109,11 +97,11 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
         };
 
         let kind = match token_info.value {
-            Token::Value(kind) => kind.to_lowercase(),
+            Token::Value(kind) => kind,
             _ => return Err(Error::MissingEntryType(token_info)),
         };
 
-        let entry = match kind.as_str() {
+        let entry = match kind.to_lowercase().as_str() {
             "comment" => EntryType::CommentEntry(self.parse_comment_entry()?),
             "preamble" => EntryType::PreambleEntry(self.parse_preamble_entry()?),
             "string" => EntryType::StringEntry(self.parse_string_entry()?),
@@ -197,10 +185,6 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
                     tags.push(self.parse_tag()?);
                 }
             };
-        }
-
-        if self.remove_empty_tags {
-            tags.retain(|tag| !tag.value.is_empty());
         }
 
         Ok(RefEntry::new(kind, key, tags))
@@ -313,7 +297,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
                 Token::Value(_) => {
                     if let Some(token_info) = self.next_non_whitespace() {
                         if let Token::Value(s) = token_info.value {
-                            Ok(Part::Value(s.to_lowercase()))
+                            Ok(Part::Value(s))
                         } else {
                             Err(Error::InternalAssertion(
                                 "Token should be value type.".to_string(),
@@ -395,7 +379,7 @@ mod tests {
             Token::Whitespace(Whitespace::Space),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let entry = parser.parse_entry()?;
         let expected = EntryType::CommentEntry(CommentEntry::new(" value ".to_string()));
@@ -419,7 +403,7 @@ mod tests {
             Token::Value("value".to_string()),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let entry = parser.parse_entry()?;
         let seq = Sequence::new(vec![
@@ -455,7 +439,7 @@ mod tests {
             Token::Special(Special::Quote),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let entries = parser.parse()?;
         let expected = Entries::new(vec![
@@ -496,12 +480,12 @@ mod tests {
             Token::Special(Special::BraceRight),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let entry = parser.parse_entry()?;
         let tags = vec![
-            Tag::new("title".to_string(), Value::Single("the,bar".to_string())),
             Tag::new("author".to_string(), Value::Single("foo".to_string())),
+            Tag::new("title".to_string(), Value::Single("the,bar".to_string())),
         ];
         let expected = EntryType::RefEntry(RefEntry::new(
             "misc".to_string(),
@@ -522,34 +506,7 @@ mod tests {
             Token::Value("citekey".to_string()),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
-
-        let entry = parser.parse_entry()?;
-        let expected = EntryType::RefEntry(RefEntry::new(
-            "misc".to_string(),
-            "citekey".to_string(),
-            Vec::with_capacity(0),
-        ));
-        assert_eq!(entry, expected);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_parse_ref_entry_remove_empty_tags() -> Result<()> {
-        let tokens = vec![
-            Token::Special(Special::At),
-            Token::Value("misc".to_string()),
-            Token::Special(Special::BraceLeft),
-            Token::Value("citekey".to_string()),
-            Token::Special(Special::Comma),
-            Token::Value("author".to_string()),
-            Token::Special(Special::Equals),
-            Token::Special(Special::Quote),
-            Token::Special(Special::Quote),
-            Token::Special(Special::BraceRight),
-        ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let entry = parser.parse_entry()?;
         let expected = EntryType::RefEntry(RefEntry::new(
@@ -576,7 +533,7 @@ mod tests {
             Token::Special(Special::Quote),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::new(as_iter(tokens), false);
+        let mut parser = Parser::new(as_iter(tokens));
 
         let entry = parser.parse_entry()?;
         let expected = EntryType::RefEntry(RefEntry::new(
@@ -603,7 +560,7 @@ mod tests {
             Token::Value("string".to_string()),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let parsed = parser.parse_tag()?;
         let expected = Tag::new("name".to_string(), Value::Single("test string".to_string()));
@@ -621,7 +578,7 @@ mod tests {
             Token::Value("string".to_string()),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let parsed = parser.parse_tag_value()?;
         let expected = Value::Single("test string".to_string());
@@ -640,7 +597,7 @@ mod tests {
             Token::Special(Special::Quote),
             Token::Special(Special::Comma),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let parsed = parser.parse_tag_value()?;
         let expected = Value::Single("test string".to_string());
@@ -655,7 +612,7 @@ mod tests {
             Token::Value("42".to_string()),
             Token::Special(Special::Comma),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let parsed = parser.parse_tag_value()?;
         let expected = Value::Integer(42);
@@ -676,7 +633,7 @@ mod tests {
             Token::Value("value".to_string()),
             Token::Special(Special::Comma),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let parsed = parser.parse_tag_value()?;
         let expected = Value::Sequence(Sequence::new(vec![
@@ -700,7 +657,7 @@ mod tests {
             Token::Value("value".to_string()),
             Token::Special(Special::Comma),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let parsed = parser.parse_tag_value_sequence()?;
         let expected = Sequence::new(vec![
@@ -722,7 +679,7 @@ mod tests {
             Token::Special(Special::Quote),
             Token::Value("value".to_string()),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let part = parser.parse_tag_value_part()?;
         assert_eq!(part, Part::Quoted("test string".to_string()));
@@ -740,7 +697,7 @@ mod tests {
             Token::Special(Special::BraceLeft),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let result = parser.parse();
         assert!(matches!(result, Err(Error::MissingEntryType(_))));
@@ -756,7 +713,7 @@ mod tests {
             Token::Special(Special::BraceLeft),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let result = parser.parse();
         assert!(matches!(result, Err(Error::MissingCiteKey(_))));
@@ -775,7 +732,7 @@ mod tests {
             Token::Value("author".to_string()),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let result = parser.parse();
         assert!(matches!(
@@ -801,7 +758,7 @@ mod tests {
             Token::Value("string".to_string()),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let parsed = parser.parse_delimited_string(
             Token::Special(Special::BraceLeft),
@@ -821,7 +778,7 @@ mod tests {
             Token::Special(Special::BraceRight),
             Token::Special(Special::BraceRight),
         ];
-        let mut parser = Parser::default(as_iter(tokens));
+        let mut parser = Parser::new(as_iter(tokens));
 
         let parsed = parser.parse_delimited_string(
             Token::Special(Special::BraceLeft),

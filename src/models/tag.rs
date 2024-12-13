@@ -1,5 +1,4 @@
 use std::cmp::{Ord, Ordering, PartialOrd};
-use std::fmt;
 
 #[derive(Debug, Eq, PartialEq)]
 pub struct Tag {
@@ -8,17 +7,8 @@ pub struct Tag {
 }
 
 impl Tag {
-    pub fn new(name: String, value: Value) -> Self {
-        Self {
-            name: name.to_lowercase(),
-            value,
-        }
-    }
-}
-
-impl fmt::Display for Tag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} = {}", self.name, self.value)
+    pub const fn new(name: String, value: Value) -> Self {
+        Self { name, value }
     }
 }
 
@@ -30,18 +20,20 @@ impl PartialOrd for Tag {
 
 impl Ord for Tag {
     fn cmp(&self, other: &Self) -> Ordering {
-        if self.name == other.name {
+        let this = self.name.to_lowercase();
+        let them = other.name.to_lowercase();
+        if this == them {
             return Ordering::Equal;
         }
-        match self.name.as_str() {
+        match this.as_str() {
             "title" => Ordering::Less,
-            "author" => match other.name.as_str() {
+            "author" => match them.as_str() {
                 "title" => Ordering::Greater,
                 _ => Ordering::Less,
             },
-            _ => match other.name.as_str() {
+            _ => match them.as_str() {
                 "title" | "author" => Ordering::Greater,
-                _ => self.name.cmp(&other.name),
+                _ => this.cmp(&them),
             },
         }
     }
@@ -64,16 +56,6 @@ impl Value {
     }
 }
 
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Single(s) => write!(f, "{{{s}}}"),
-            Self::Integer(s) => write!(f, "{s}"),
-            Self::Sequence(s) => write!(f, "{s}"),
-        }
-    }
-}
-
 #[derive(Debug, Eq, PartialEq)]
 pub struct Sequence(Vec<Part>);
 
@@ -89,17 +71,9 @@ impl Sequence {
     pub fn len(&self) -> usize {
         self.0.len()
     }
-}
 
-impl fmt::Display for Sequence {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let content = self
-            .0
-            .iter()
-            .map(std::string::ToString::to_string)
-            .collect::<Vec<String>>()
-            .join(" # ");
-        write!(f, "{content}")
+    pub const fn parts(&self) -> &Vec<Part> {
+        &self.0
     }
 }
 
@@ -121,15 +95,6 @@ impl Part {
     pub fn is_empty(&self) -> bool {
         match self {
             Self::Quoted(s) | Self::Value(s) => s.is_empty(),
-        }
-    }
-}
-
-impl fmt::Display for Part {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Quoted(s) => write!(f, "\"{s}\""),
-            Self::Value(v) => write!(f, "{}", v.to_lowercase()),
         }
     }
 }
