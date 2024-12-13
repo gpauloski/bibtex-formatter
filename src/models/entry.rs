@@ -1,13 +1,8 @@
-use crate::models::{Sequence, Tag, Value};
-use crate::Result;
+use crate::models::{Sequence, Tag};
 use std::cmp::{Ord, Ordering, PartialOrd};
-use std::fmt;
-use std::fmt::{Debug, Display};
-use std::fs::File;
-use std::io::Write;
-use std::mem::discriminant;
+use std::fmt::Debug;
 
-pub trait Entry: Debug + Display + Ord + PartialOrd {}
+pub trait Entry: Debug + Ord + PartialOrd {}
 
 #[derive(Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub enum EntryType {
@@ -17,54 +12,20 @@ pub enum EntryType {
     RefEntry(RefEntry),
 }
 
-impl Display for EntryType {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::PreambleEntry(e) => write!(f, "{e}"),
-            Self::CommentEntry(e) => write!(f, "{e}"),
-            Self::StringEntry(e) => write!(f, "{e}"),
-            Self::RefEntry(e) => write!(f, "{e}"),
-        }
-    }
-}
-
 #[derive(Debug, Eq, PartialEq)]
 pub struct Entries(Vec<EntryType>);
 
 impl Entries {
-    pub fn new(entries: Vec<EntryType>) -> Self {
+    pub const fn new(entries: Vec<EntryType>) -> Self {
         Self(entries)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &EntryType> {
+        self.0.iter()
     }
 
     pub fn sort(&mut self) {
         self.0.sort();
-    }
-
-    pub fn write(&self, filepath: &str) -> Result<()> {
-        let mut file = File::create(filepath)?;
-        write!(file, "{self}")?;
-        Ok(())
-    }
-}
-
-impl Display for Entries {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let mut iter = self.0.iter().peekable();
-        while let Some(entry) = iter.next() {
-            if let Some(next) = iter.peek() {
-                writeln!(f, "{entry}")?;
-
-                if discriminant(entry) != discriminant(next) {
-                    writeln!(f)?;
-                } else if let EntryType::RefEntry(_) = next {
-                    writeln!(f)?;
-                }
-            } else {
-                write!(f, "{entry}")?;
-            }
-        }
-
-        Ok(())
     }
 }
 
@@ -76,31 +37,12 @@ pub struct RefEntry {
 }
 
 impl RefEntry {
-    pub fn new(kind: String, key: String, mut tags: Vec<Tag>) -> Self {
-        tags.sort();
-        Self {
-            kind: kind.to_lowercase(),
-            key: key.to_lowercase(),
-            tags,
-        }
+    pub const fn new(kind: String, key: String, tags: Vec<Tag>) -> Self {
+        Self { kind, key, tags }
     }
 }
 
 impl Entry for RefEntry {}
-
-impl Display for RefEntry {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if self.tags.is_empty() {
-            return write!(f, "@{}{{{}}}", self.kind, self.key);
-        }
-
-        writeln!(f, "@{}{{{},", self.kind, self.key)?;
-        for tag in &self.tags {
-            writeln!(f, "    {},", &tag)?;
-        }
-        write!(f, "}}")
-    }
-}
 
 impl PartialOrd for RefEntry {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -121,15 +63,13 @@ impl CommentEntry {
     pub const fn new(body: String) -> Self {
         Self(body)
     }
+
+    pub fn body(&self) -> &str {
+        &self.0
+    }
 }
 
 impl Entry for CommentEntry {}
-
-impl Display for CommentEntry {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "@COMMENT{{{}}}", self.0)
-    }
-}
 
 impl PartialOrd for CommentEntry {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -150,15 +90,13 @@ impl PreambleEntry {
     pub const fn new(parts: Sequence) -> Self {
         Self(parts)
     }
+
+    pub const fn body(&self) -> &Sequence {
+        &self.0
+    }
 }
 
 impl Entry for PreambleEntry {}
-
-impl Display for PreambleEntry {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "@PREAMBLE{{{}}}", self.0)
-    }
-}
 
 impl PartialOrd for PreambleEntry {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -180,20 +118,13 @@ impl StringEntry {
     pub const fn new(tag: Tag) -> Self {
         Self(tag)
     }
+
+    pub const fn tag(&self) -> &Tag {
+        &self.0
+    }
 }
 
 impl Entry for StringEntry {}
-
-impl Display for StringEntry {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let value = match &self.0.value {
-            Value::Single(s) => format!("\"{s}\""),
-            Value::Integer(v) => format!("\"{v}\""),
-            Value::Sequence(s) => s.to_string(),
-        };
-        write!(f, "@STRING{{{} = {}}}", self.0.name, value)
-    }
-}
 
 impl PartialOrd for StringEntry {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -203,6 +134,6 @@ impl PartialOrd for StringEntry {
 
 impl Ord for StringEntry {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.0.name.cmp(&other.0.name)
+        self.0.cmp(&other.0)
     }
 }

@@ -1,6 +1,7 @@
 #![cfg(test)]
 use test_case::test_case;
 
+use bibtex_format::format::Formatter;
 use bibtex_format::parse::Parser;
 use bibtex_format::token::Tokenizer;
 use bibtex_format::Result;
@@ -24,6 +25,7 @@ use std::fs;
 //   - Leading and trailing whitespace is trimmed from the expected output.
 #[test_case("coalesce-multiline-content" ; "coalesce mutliline contents")]
 #[test_case("non-delimited-content" ; "non-delimited single word contents")]
+#[test_case("preserve-title-casing" ; "preserve title casing with braces")]
 #[test_case("quotes-to-braces" ; "convert quotes to braces in tag contents")]
 #[test_case("remove-empty-tags" ; "remove tags with empty content")]
 #[test_case("sort-comments-without-format" ; "sort comment but do not format")]
@@ -41,11 +43,13 @@ fn validate_snippets(name: &str) -> Result<()> {
 
     let mut tokenizer = Tokenizer::new(raw_input.chars());
     let tokens = tokenizer.tokenize();
-    let mut parser = Parser::default(tokens.into_iter());
-    let mut entries = parser.parse()?;
-    entries.sort();
+    let mut parser = Parser::new(tokens.into_iter());
+    let entries = parser.parse()?;
 
-    assert_eq!(entries.to_string(), expected.trim());
+    let formatter = Formatter::builder().build();
+    let formatted = formatter.format_entries(&entries);
+
+    assert_eq!(formatted, expected.trim());
 
     Ok(())
 }
