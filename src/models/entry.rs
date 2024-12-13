@@ -16,7 +16,7 @@ pub enum EntryType {
 pub struct Entries(Vec<EntryType>);
 
 impl Entries {
-    pub fn new(entries: Vec<EntryType>) -> Self {
+    pub const fn new(entries: Vec<EntryType>) -> Self {
         Self(entries)
     }
 
@@ -37,7 +37,7 @@ pub struct RefEntry {
 }
 
 impl RefEntry {
-    pub fn new(kind: String, key: String, tags: Vec<Tag>) -> Self {
+    pub const fn new(kind: String, key: String, tags: Vec<Tag>) -> Self {
         Self { kind, key, tags }
     }
 }

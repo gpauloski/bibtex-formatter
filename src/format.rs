@@ -218,6 +218,14 @@ pub fn remove_braces(text: &str) -> String {
     text.replace(&['{', '}'][..], "")
 }
 
+fn wrap_first_char_with_braces(word: &str) -> String {
+    if let Some((first, rest)) = word.split_at(1).into() {
+        format!("{{{}}}{}", first, rest)
+    } else {
+        word.to_string()
+    }
+}
+
 fn wrap_word_with_braces(word: &str) -> String {
     word.strip_suffix(':').map_or_else(
         || format!("{{{}}}", word),
@@ -230,9 +238,20 @@ pub fn format_title(text: &str) -> String {
         .split_whitespace()
         .enumerate()
         .map(|(i, word)| {
-            if i == 0 && !word.chars().skip(1).any(|c| c.is_uppercase()) {
-                word.to_string()
-            } else if !word.is_empty() && word.chars().any(|c| c.is_uppercase()) {
+            let mut chars = word.chars();
+            let first_cap = chars.next().map_or_else(|| false, |c| c.is_uppercase());
+            let rest_cap = chars.any(|c| c.is_uppercase());
+
+            if first_cap && !rest_cap {
+                // Bibtex automatically capitalizes first char so first word does
+                // not need to be wrapped if only its first char is a capital.
+                if i == 0 {
+                    word.to_string()
+                } else {
+                    wrap_first_char_with_braces(word)
+                }
+            } else if rest_cap {
+                // Wrap entire word if any char other than the first is a capital.
                 wrap_word_with_braces(word)
             } else {
                 word.to_string()
@@ -279,7 +298,7 @@ mod tests {
     #[test_case("{foo}", "foo" ; "simple")]
     #[test_case("Foo {FOO}", "Foo {FOO}" ; "skip first character")]
     #[test_case("FOO:", "{FOO}:" ; "exclude colon")]
-    #[test_case("{FOO: A Framework for BAR}", "{FOO}: {A} {Framework} for {BAR}" ; "multiple")]
+    #[test_case("{FOO: A Framework for BaR}", "{FOO}: {A} {F}ramework for {BaR}" ; "multiple")]
     fn test_format_title(input: &str, expected: &str) {
         assert_eq!(format_title(input), expected)
     }

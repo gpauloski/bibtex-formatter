@@ -60,7 +60,7 @@ impl Value {
 pub struct Sequence(Vec<Part>);
 
 impl Sequence {
-    pub fn new(parts: Vec<Part>) -> Self {
+    pub const fn new(parts: Vec<Part>) -> Self {
         Self(parts)
     }
 

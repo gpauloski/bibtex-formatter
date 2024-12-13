@@ -74,7 +74,7 @@ bibtex-format references.bib --output formatted.bib
 **Output:** `formatted.bib`
 ```bib
 @inproceedings{pauloski2024taps,
-    title = {TaPS: A Performance Evaluation Suite for Task-based Execution Frameworks},
+    title = {{TaPS}: {A} {P}erformance {E}valuation {S}uite for {T}ask-based {E}xecution {F}rameworks},
     author = {Pauloski, J. Gregory and Hayot-Sasson, Valerie and Gonthier, Maxime and Hudson, Nathaniel and Pan, Haochen and Zhou, Sicheng and Foster, Ian and Chard, Kyle},
     address = {New York, NY, USA},
     booktitle = {IEEE 20th International Conference on e-Science},
@@ -85,13 +85,11 @@ bibtex-format references.bib --output formatted.bib
 }
 
 @inproceedings{zhang2020compressed,
-    title = {{Efficient I/O for Neural Network Training with Compressed Data}},
+    title = {Efficient {I/O} for {N}eural {N}etwork {T}raining with {C}ompressed {D}ata},
     author = {Z. {Zhang} and L. {Huang} and J. G. {Pauloski} and I. T. {Foster}},
     booktitle = {2020 IEEE International Parallel and Distributed Processing Symposium (IPDPS)},
     doi = {10.1109/IPDPS47924.2020.00050},
-    number = {},
     pages = {409-418},
-    volume = {},
     year = {2020},
 }
 ```
