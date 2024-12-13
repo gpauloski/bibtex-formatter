@@ -54,8 +54,8 @@ bibtex-format references.bib --output formatted.bib
     number={},
     pages={409-418},
     volume={},
-    year={2020}
-    doi={10.1109/IPDPS47924.2020.00050},
+    year={2020},
+    doi={10.1109/IPDPS47924.2020.00050}
 }
 
 @INPROCEEDINGS{PAULOSKI2024TAPS,
