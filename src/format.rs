@@ -234,8 +234,11 @@ fn wrap_word_with_braces(word: &str) -> String {
 }
 
 pub fn format_title(text: &str) -> String {
+    let delim_pattern =
+        |c: char| c.is_whitespace() || matches!(c, '-' | '–' | '—' | '.' | ':' | '!' | '(' | ')');
     remove_braces(text)
-        .split_whitespace()
+        .split_inclusive(delim_pattern)
+        .flat_map(|s| s.split_inclusive(delim_pattern))
         .enumerate()
         .map(|(i, word)| {
             let mut chars = word.chars();
@@ -258,7 +261,7 @@ pub fn format_title(text: &str) -> String {
             }
         })
         .collect::<Vec<String>>()
-        .join(" ")
+        .join("")
 }
 
 #[cfg(test)]
@@ -298,6 +301,7 @@ mod tests {
     #[test_case("{foo}", "foo" ; "simple")]
     #[test_case("Foo {FOO}", "Foo {FOO}" ; "skip first character")]
     #[test_case("FOO:", "{FOO}:" ; "exclude colon")]
+    #[test_case("Foo-Bar-BAZ", "Foo-{B}ar-{BAZ}" ; "split dashes")]
     #[test_case("{FOO: A Framework for BaR}", "{FOO}: {A} {F}ramework for {BaR}" ; "multiple")]
     fn test_format_title(input: &str, expected: &str) {
         assert_eq!(format_title(input), expected)
