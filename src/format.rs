@@ -218,6 +218,31 @@ pub fn remove_braces(text: &str) -> String {
     text.replace(&['{', '}'][..], "")
 }
 
+fn split_with_delimiters(input: &str) -> Vec<String> {
+    let mut result = Vec::new();
+    let mut current = String::new();
+
+    for c in input.chars() {
+        if c.is_whitespace() || matches!(c, '-' | '–' | '—' | '.' | ':' | '!' | '(' | ')') {
+            if !current.is_empty() {
+                result.push(current.clone());
+                current.clear();
+            }
+            // Add delimiter as it's own element.
+            result.push(c.to_string());
+        } else {
+            current.push(c);
+        }
+    }
+
+    if !current.is_empty() {
+        // Add the last segment if any.
+        result.push(current);
+    }
+
+    result
+}
+
 fn wrap_first_char_with_braces(word: &str) -> String {
     if let Some((first, rest)) = word.split_at(1).into() {
         format!("{{{}}}{}", first, rest)
@@ -234,11 +259,13 @@ fn wrap_word_with_braces(word: &str) -> String {
 }
 
 pub fn format_title(text: &str) -> String {
-    let delim_pattern =
-        |c: char| c.is_whitespace() || matches!(c, '-' | '–' | '—' | '.' | ':' | '!' | '(' | ')');
-    remove_braces(text)
-        .split_inclusive(delim_pattern)
-        .flat_map(|s| s.split_inclusive(delim_pattern))
+    let normalized = remove_braces(text)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    split_with_delimiters(&normalized)
+        .iter()
         .enumerate()
         .map(|(i, word)| {
             let mut chars = word.chars();
