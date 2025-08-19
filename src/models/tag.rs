@@ -68,7 +68,7 @@ impl Sequence {
         self.0.iter().all(Part::is_empty)
     }
 
-    pub fn len(&self) -> usize {
+    pub const fn len(&self) -> usize {
         self.0.len()
     }
 
@@ -92,7 +92,7 @@ pub enum Part {
 }
 
 impl Part {
-    pub fn is_empty(&self) -> bool {
+    pub const fn is_empty(&self) -> bool {
         match self {
             Self::Quoted(s) | Self::Value(s) => s.is_empty(),
         }
