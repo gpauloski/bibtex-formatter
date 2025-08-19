@@ -51,7 +51,7 @@ pub enum Whitespace {
 }
 
 impl Whitespace {
-    pub fn from(c: &char) -> Option<Self> {
+    pub const fn from(c: &char) -> Option<Self> {
         match c {
             '\n' | '\r' => Some(Self::NewLine),
             '\t' => Some(Self::Tab),
