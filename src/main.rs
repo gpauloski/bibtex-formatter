@@ -25,7 +25,7 @@ struct Args {
     /// Skip formatting titles.
     #[arg(long)]
     skip_title_format: bool,
-    /// Retain tags with empty contents.
+    /// Remove tags with empty contents.
     #[arg(long)]
     remove_empty_tags: bool,
 }
