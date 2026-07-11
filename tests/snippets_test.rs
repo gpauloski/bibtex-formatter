@@ -16,25 +16,51 @@ use std::fs;
 //      input bibtex entries to be formatted.
 //   2. Create a bibtex file tests/snippets/foo-bar.out.bib containing the
 //      expected formatting of the input file.
-//   3. Add a new test case macro to this function with the test name and
-//      short description of the test.
+//   3. Add a new test case macro to the function whose formatter config the
+//      snippet should run under, with the test name and a short description:
 //          #[test_case("foo-bar" ; "compare foo and bar")
-//      Please keep the test cases sorted by test name.
+//      Please keep the test cases sorted by test name within each function.
+//        - validate_snippets: the default formatter (sorted).
+//        - validate_snippets_skip_sort: --skip-sort-entries (preserves order
+//          and the original whitespace between elements).
+//        - validate_snippets_remove_comments: --remove-comments.
 //
 // Notes:
-//   - Leading and trailing whitespace is trimmed from the expected output.
+//   - Leading and trailing whitespace is trimmed from the expected output, so
+//     only whitespace *between* elements is asserted.
 #[test_case("coalesce-multiline-content" ; "coalesce mutliline contents")]
+#[test_case("comment-nested-braces" ; "round-trip @comment with nested braces")]
+#[test_case("comment-travels-with-entry" ; "comment moves with its entry when sorted")]
+#[test_case("implicit-comments" ; "attach comments to following entry")]
 #[test_case("non-delimited-content" ; "non-delimited single word contents")]
 #[test_case("preserve-title-casing" ; "preserve title casing with braces")]
 #[test_case("quotes-to-braces" ; "convert quotes to braces in tag contents")]
 #[test_case("remove-empty-tags" ; "remove tags with empty content")]
-#[test_case("sort-comments-without-format" ; "sort comment but do not format")]
 #[test_case("sort-entries" ; "sort entries in file")]
 #[test_case("sort-preamble-first"; "sort preambles at top of file")]
 #[test_case("sort-tags" ; "sort tags in entry")]
 #[test_case("string-concat" ; "format entries with string concatentation")]
 #[test_case("string-entries" ; "format string entry types")]
+#[test_case("trailing-comments-without-format" ; "keep trailing comments in order without formatting")]
 fn validate_snippets(name: &str) -> Result<()> {
+    run_snippet(name, &Formatter::builder().build())
+}
+
+// Snippets exercising --skip-sort-entries, which preserves the source order and
+// the original whitespace between every element. Keep sorted by test name.
+#[test_case("skip-sort-comments" ; "preserve mixed comment layout without sorting")]
+#[test_case("skip-sort-spacing" ; "preserve entry spacing verbatim without sorting")]
+fn validate_snippets_skip_sort(name: &str) -> Result<()> {
+    run_snippet(name, &Formatter::builder().sort_entries(false).build())
+}
+
+// Snippets exercising --remove-comments. Keep sorted by test name.
+#[test_case("remove-comments" ; "strip all comments before sorting")]
+fn validate_snippets_remove_comments(name: &str) -> Result<()> {
+    run_snippet(name, &Formatter::builder().remove_comments(true).build())
+}
+
+fn run_snippet(name: &str, formatter: &Formatter) -> Result<()> {
     let input = format!("tests/snippets/{}.in.bib", name);
     let output = format!("tests/snippets/{}.out.bib", name);
 
@@ -46,7 +72,6 @@ fn validate_snippets(name: &str) -> Result<()> {
     let mut parser = Parser::new(tokens.into_iter());
     let entries = parser.parse()?;
 
-    let formatter = Formatter::builder().build();
     let formatted = formatter.format_entries(&entries);
 
     assert_eq!(formatted, expected.trim());

@@ -12,21 +12,65 @@ pub enum EntryType {
     RefEntry(RefEntry),
 }
 
-#[derive(Debug, Eq, PartialEq)]
-pub struct Entries(Vec<EntryType>);
+#[derive(Debug)]
+pub struct Entries {
+    entries: Vec<EntryType>,
+    // Whitespace preceding each entry, captured verbatim from the source and
+    // aligned by index with `entries`. Used only to reproduce the original
+    // vertical layout when entries are not sorted. Excluded from equality since
+    // it is presentation metadata; empty strings when built without spacing.
+    leading: Vec<String>,
+}
 
 impl Entries {
-    pub const fn new(entries: Vec<EntryType>) -> Self {
-        Self(entries)
+    pub fn new(entries: Vec<EntryType>) -> Self {
+        let leading = vec![String::new(); entries.len()];
+        Self { entries, leading }
+    }
+
+    /// Build entries paired with the whitespace that preceded each one in the
+    /// source. `leading` must be the same length as `entries`.
+    pub fn with_leading(entries: Vec<EntryType>, leading: Vec<String>) -> Self {
+        debug_assert_eq!(entries.len(), leading.len());
+        Self { entries, leading }
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &EntryType> {
-        self.0.iter()
+        self.entries.iter()
     }
 
-    pub fn sort(&mut self) {
-        self.0.sort();
+    /// Iterate over each entry paired with the whitespace that preceded it.
+    pub fn iter_with_leading(&self) -> impl Iterator<Item = (&str, &EntryType)> {
+        self.leading
+            .iter()
+            .map(String::as_str)
+            .zip(self.entries.iter())
     }
+
+    /// Sort entries in place by their derived ordering.
+    ///
+    /// NOTE: a flat sort does not preserve comment attachment (comments
+    /// travelling with the entry that follows them), and it leaves the captured
+    /// leading whitespace misaligned. Comment positioning and spacing are
+    /// presentation concerns handled by `Formatter::format_entries`; this method
+    /// is retained for API compatibility only.
+    pub fn sort(&mut self) {
+        self.entries.sort();
+    }
+}
+
+impl PartialEq for Entries {
+    fn eq(&self, other: &Self) -> bool {
+        self.entries == other.entries
+    }
+}
+
+impl Eq for Entries {}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub enum CommentKind {
+    Explicit, // @comment{...}
+    Implicit, // free text between entries
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -57,15 +101,32 @@ impl Ord for RefEntry {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct CommentEntry(String);
+pub struct CommentEntry {
+    body: String,
+    kind: CommentKind,
+}
 
 impl CommentEntry {
-    pub const fn new(body: String) -> Self {
-        Self(body)
+    pub const fn explicit(body: String) -> Self {
+        Self {
+            body,
+            kind: CommentKind::Explicit,
+        }
+    }
+
+    pub const fn implicit(body: String) -> Self {
+        Self {
+            body,
+            kind: CommentKind::Implicit,
+        }
     }
 
     pub fn body(&self) -> &str {
-        &self.0
+        &self.body
+    }
+
+    pub const fn kind(&self) -> CommentKind {
+        self.kind
     }
 }
 
@@ -79,7 +140,9 @@ impl PartialOrd for CommentEntry {
 
 impl Ord for CommentEntry {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.0.cmp(&other.0)
+        self.body
+            .cmp(&other.body)
+            .then_with(|| self.kind.cmp(&other.kind))
     }
 }
 

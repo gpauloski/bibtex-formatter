@@ -1,13 +1,20 @@
-use crate::models::{CommentEntry, Entries, EntryType, PreambleEntry, RefEntry, StringEntry};
-use crate::models::{Part, Sequence, Tag, Value};
+use crate::models::{CommentEntry, CommentKind, Entries, EntryType, PreambleEntry, RefEntry};
+use crate::models::{Part, Sequence, StringEntry, Tag, Value};
 use crate::Result;
+use std::cmp::Ordering;
 use std::fs::File;
 use std::io::Write;
 use std::mem::discriminant;
 
+struct Group<'a> {
+    comments: Vec<&'a EntryType>, // CommentEntry variants only
+    entry: Option<&'a EntryType>, // None only for the trailing group
+}
+
 #[derive(Debug, Eq, PartialEq)]
 pub struct Formatter {
     format_title: bool,
+    remove_comments: bool,
     skip_empty_tags: bool,
     sort_entries: bool,
     sort_tags: bool,
@@ -25,28 +32,114 @@ impl Formatter {
     }
 
     pub fn format_entries(&self, entries: &Entries) -> String {
-        let mut lines: Vec<String> = vec![];
-        let mut entries: Vec<&EntryType> = entries.iter().collect();
-        if self.sort_entries {
-            entries.sort();
+        // Without sorting, emit elements in their original order and reproduce
+        // the source whitespace between them rather than reflowing it.
+        if !self.sort_entries {
+            let items: Vec<(&str, &EntryType)> = entries
+                .iter_with_leading()
+                .filter(|(_, e)| !(self.remove_comments && matches!(e, EntryType::CommentEntry(_))))
+                .collect();
+            return self.format_in_order(&items);
         }
-        let mut iter = entries.iter().peekable();
 
-        while let Some(entry) = iter.next() {
-            if let Some(next) = iter.peek() {
-                lines.push(format!("{}\n", self.format_entry(entry)));
+        let entries: Vec<&EntryType> = entries
+            .iter()
+            .filter(|e| !(self.remove_comments && matches!(e, EntryType::CommentEntry(_))))
+            .collect();
 
-                if discriminant(*entry) != discriminant(*next) {
-                    lines.push("\n".to_string());
-                } else if let EntryType::RefEntry(_) = next {
-                    lines.push("\n".to_string());
-                }
+        // Attach each run of comments to the next non-comment entry; leftovers
+        // form a trailing entry-less group that must stay last.
+        let mut groups: Vec<Group> = Vec::new();
+        let mut pending: Vec<&EntryType> = Vec::new();
+        for entry in entries {
+            if matches!(entry, EntryType::CommentEntry(_)) {
+                pending.push(entry);
             } else {
-                lines.push(self.format_entry(entry));
+                groups.push(Group {
+                    comments: std::mem::take(&mut pending),
+                    entry: Some(entry),
+                });
             }
         }
+        if !pending.is_empty() {
+            groups.push(Group {
+                comments: pending,
+                entry: None,
+            });
+        }
 
-        lines.join("")
+        groups.sort_by(|a, b| match (a.entry, b.entry) {
+            (Some(x), Some(y)) => x.cmp(y), // derived EntryType Ord, unchanged
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        });
+
+        let mut out = String::new();
+        for (i, group) in groups.iter().enumerate() {
+            if i > 0 {
+                out.push('\n');
+                if Self::blank_line_between(&groups[i - 1], group) {
+                    out.push('\n');
+                }
+            }
+            let parts: Vec<String> = group
+                .comments
+                .iter()
+                .chain(group.entry.iter())
+                .map(|e| self.format_entry(e))
+                .collect();
+            out.push_str(&parts.join("\n")); // comments flush above their entry
+        }
+        out
+    }
+
+    /// Emit entries in their original order, reproducing the source whitespace
+    /// that preceded each element so nothing is reflowed when sorting is
+    /// disabled.
+    fn format_in_order(&self, items: &[(&str, &EntryType)]) -> String {
+        let mut out = String::new();
+        for (i, (leading, entry)) in items.iter().enumerate() {
+            if i > 0 {
+                out.push_str(&Self::separator_before(leading, items[i - 1].1, entry));
+            }
+            out.push_str(&self.format_entry(entry));
+        }
+        out
+    }
+
+    /// Choose the whitespace separating two adjacent elements when preserving
+    /// order. The captured source whitespace takes precedence; when it is absent
+    /// (e.g. hand-built entries) fall back to the same rules the sorted path
+    /// uses.
+    fn separator_before(leading: &str, prev: &EntryType, cur: &EntryType) -> String {
+        if !leading.is_empty() {
+            return newlines(leading);
+        }
+        // No captured whitespace: a comment block is set off by a blank line and
+        // sits flush above its following entry, matching the sorted path.
+        if matches!(cur, EntryType::CommentEntry(_)) {
+            "\n\n".to_string()
+        } else if matches!(prev, EntryType::CommentEntry(_)) {
+            "\n".to_string()
+        } else if discriminant(prev) != discriminant(cur) || matches!(cur, EntryType::RefEntry(_)) {
+            "\n\n".to_string()
+        } else {
+            "\n".to_string()
+        }
+    }
+
+    fn blank_line_between(prev: &Group, next: &Group) -> bool {
+        if !next.comments.is_empty() {
+            return true; // a comment block is always set off by a blank line
+        }
+        match (prev.entry, next.entry) {
+            // Legacy rule, verbatim: different variants, or next is a RefEntry.
+            (Some(a), Some(b)) => {
+                discriminant(a) != discriminant(b) || matches!(b, EntryType::RefEntry(_))
+            }
+            _ => true,
+        }
     }
 
     pub fn format_entry(&self, entry: &EntryType) -> String {
@@ -59,7 +152,10 @@ impl Formatter {
     }
 
     pub fn format_comment_entry(&self, entry: &CommentEntry) -> String {
-        format!("@COMMENT{{{}}}", entry.body())
+        match entry.kind() {
+            CommentKind::Explicit => format!("@COMMENT{{{}}}", entry.body()),
+            CommentKind::Implicit => entry.body().to_string(),
+        }
     }
 
     pub fn format_preamble_entry(&self, entry: &PreambleEntry) -> String {
@@ -163,6 +259,7 @@ impl Formatter {
 
 pub struct FormatterBuilder {
     format_title: bool,
+    remove_comments: bool,
     skip_empty_tags: bool,
     sort_entries: bool,
     sort_tags: bool,
@@ -172,6 +269,7 @@ impl Default for FormatterBuilder {
     fn default() -> Self {
         Self {
             format_title: true,
+            remove_comments: false,
             skip_empty_tags: true,
             sort_entries: true,
             sort_tags: true,
@@ -187,6 +285,7 @@ impl FormatterBuilder {
     pub const fn build(self) -> Formatter {
         Formatter {
             format_title: self.format_title,
+            remove_comments: self.remove_comments,
             skip_empty_tags: self.skip_empty_tags,
             sort_entries: self.sort_entries,
             sort_tags: self.sort_tags,
@@ -195,6 +294,11 @@ impl FormatterBuilder {
 
     pub const fn format_title(mut self, format_title: bool) -> Self {
         self.format_title = format_title;
+        self
+    }
+
+    pub const fn remove_comments(mut self, remove_comments: bool) -> Self {
+        self.remove_comments = remove_comments;
         self
     }
 
@@ -216,6 +320,13 @@ impl FormatterBuilder {
 
 pub fn remove_braces(text: &str) -> String {
     text.replace(&['{', '}'][..], "")
+}
+
+/// Reproduce the newline structure of a captured whitespace run, dropping any
+/// spaces/indentation but keeping blank lines. Always emits at least one newline
+/// since adjacent elements are on separate lines.
+fn newlines(ws: &str) -> String {
+    "\n".repeat(ws.matches('\n').count().max(1))
 }
 
 fn split_with_delimiters(input: &str) -> Vec<String> {
@@ -294,12 +405,149 @@ pub fn format_title(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::{CommentEntry, Entries, RefEntry};
     use test_case::test_case;
+
+    fn ref_entry(key: &str) -> EntryType {
+        EntryType::RefEntry(RefEntry::new(
+            "misc".to_string(),
+            key.to_string(),
+            Vec::with_capacity(0),
+        ))
+    }
+
+    #[test]
+    fn test_format_comment_entry_explicit() {
+        let formatter = Formatter::builder().build();
+        let entry = CommentEntry::explicit(" body ".to_string());
+        assert_eq!(formatter.format_comment_entry(&entry), "@COMMENT{ body }");
+    }
+
+    #[test]
+    fn test_format_comment_entry_implicit() {
+        let formatter = Formatter::builder().build();
+        let entry = CommentEntry::implicit("free text".to_string());
+        assert_eq!(formatter.format_comment_entry(&entry), "free text");
+    }
+
+    #[test]
+    fn test_format_entries_comment_attachment() {
+        let formatter = Formatter::builder().build();
+        let entries = Entries::new(vec![
+            EntryType::CommentEntry(CommentEntry::implicit("a note".to_string())),
+            ref_entry("z"),
+            ref_entry("a"),
+        ]);
+        let expected = "@misc{a}\n\na note\n@misc{z}";
+        assert_eq!(formatter.format_entries(&entries), expected);
+    }
+
+    #[test]
+    fn test_format_entries_trailing_comments_stay_last() {
+        let formatter = Formatter::builder().build();
+        let entries = Entries::new(vec![
+            ref_entry("z"),
+            EntryType::CommentEntry(CommentEntry::implicit("trailing".to_string())),
+            ref_entry("a"),
+            EntryType::CommentEntry(CommentEntry::implicit("last".to_string())),
+        ]);
+        // "trailing" attaches to the following entry a; "last" has no following
+        // entry so it stays in a trailing group after every sorted entry.
+        let expected = "trailing\n@misc{a}\n\n@misc{z}\n\nlast";
+        assert_eq!(formatter.format_entries(&entries), expected);
+    }
+
+    #[test]
+    fn test_format_entries_remove_comments() {
+        let formatter = Formatter::builder().remove_comments(true).build();
+        let entries = Entries::new(vec![
+            EntryType::CommentEntry(CommentEntry::implicit("a note".to_string())),
+            ref_entry("z"),
+            ref_entry("a"),
+        ]);
+        assert_eq!(formatter.format_entries(&entries), "@misc{a}\n\n@misc{z}");
+
+        let comments_only = Entries::new(vec![EntryType::CommentEntry(CommentEntry::implicit(
+            "note".to_string(),
+        ))]);
+        assert_eq!(formatter.format_entries(&comments_only), "");
+    }
+
+    #[test]
+    fn test_format_entries_skip_sort_with_comments() {
+        let formatter = Formatter::builder().sort_entries(false).build();
+        let entries = Entries::new(vec![
+            EntryType::CommentEntry(CommentEntry::implicit("a note".to_string())),
+            ref_entry("z"),
+            ref_entry("a"),
+        ]);
+        let expected = "a note\n@misc{z}\n\n@misc{a}";
+        assert_eq!(formatter.format_entries(&entries), expected);
+    }
+
+    #[test]
+    fn test_format_entries_skip_sort_preserves_comment_whitespace() {
+        let formatter = Formatter::builder().sort_entries(false).build();
+        let entries = Entries::with_leading(
+            vec![
+                ref_entry("a"),
+                EntryType::CommentEntry(CommentEntry::implicit("note".to_string())),
+                ref_entry("b"),
+            ],
+            vec![String::new(), "\n\n\n".to_string(), "\n\n".to_string()],
+        );
+        // Blank lines around the comment are reproduced verbatim: two blank
+        // lines before it, one blank line after it.
+        let expected = "@misc{a}\n\n\nnote\n\n@misc{b}";
+        assert_eq!(formatter.format_entries(&entries), expected);
+    }
+
+    #[test]
+    fn test_format_entries_skip_sort_preserves_entry_whitespace() {
+        let formatter = Formatter::builder().sort_entries(false).build();
+        let entries = Entries::with_leading(
+            vec![ref_entry("z"), ref_entry("y"), ref_entry("x")],
+            vec![String::new(), "\n".to_string(), "\n\n\n".to_string()],
+        );
+        // Comment-free spacing is preserved verbatim: z and y flush (single
+        // newline), two blank lines before x.
+        let expected = "@misc{z}\n@misc{y}\n\n\n@misc{x}";
+        assert_eq!(formatter.format_entries(&entries), expected);
+    }
+
+    #[test]
+    fn test_format_entries_skip_sort_preserves_explicit_comment_whitespace() {
+        let formatter = Formatter::builder().sort_entries(false).build();
+        let entries = Entries::with_leading(
+            vec![
+                EntryType::CommentEntry(CommentEntry::explicit("note".to_string())),
+                ref_entry("a"),
+            ],
+            vec![String::new(), "\n\n\n".to_string()],
+        );
+        // The two blank lines after the @comment are reproduced verbatim.
+        let expected = "@COMMENT{note}\n\n\n@misc{a}";
+        assert_eq!(formatter.format_entries(&entries), expected);
+    }
+
+    #[test]
+    fn test_format_entries_comment_before_first_entry_travels() {
+        let formatter = Formatter::builder().build();
+        let entries = Entries::new(vec![
+            EntryType::CommentEntry(CommentEntry::implicit("header".to_string())),
+            ref_entry("z"),
+            ref_entry("a"),
+        ]);
+        // The header comment attaches to z and travels with it under sort.
+        let expected = "@misc{a}\n\nheader\n@misc{z}";
+        assert_eq!(formatter.format_entries(&entries), expected);
+    }
 
     #[test]
     fn test_formatter_builder() {
         let formatter = Formatter {
             format_title: true,
+            remove_comments: false,
             skip_empty_tags: false,
             sort_entries: true,
             sort_tags: false,
