@@ -45,6 +45,13 @@ Strip all comments (both `@comment{...}` entries and free text between entries):
 bibtex-format references.bib --remove-comments
 ```
 
+Collapse exact-duplicate entries (same cite key and content):
+```bash
+bibtex-format references.bib --remove-duplicates
+```
+Entries that share a cite key but differ in content are all kept; each such
+collision is reported as a warning on stderr so nothing is dropped silently.
+
 Run `bibtex-format --help` to see all available options.
 
 ## Example

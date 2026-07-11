@@ -31,6 +31,10 @@ struct Args {
     /// Remove all comments (implicit text and @comment entries).
     #[arg(long)]
     remove_comments: bool,
+    /// Collapse exact-duplicate entries (same key and content). Entries that
+    /// share a key but differ are all kept and reported as warnings.
+    #[arg(long)]
+    remove_duplicates: bool,
 }
 
 fn main() -> ExitCode {
@@ -48,13 +52,19 @@ fn main() -> ExitCode {
     let tokens = tokenizer.tokenize();
 
     let mut parser = parse::Parser::new(tokens.into_iter());
-    let entries = match parser.parse() {
+    let mut entries = match parser.parse() {
         Ok(entries) => entries,
         Err(error) => {
             println!("{error}");
             return ExitCode::from(2);
         }
     };
+
+    if args.remove_duplicates {
+        for warning in entries.remove_duplicates() {
+            eprintln!("{warning}");
+        }
+    }
 
     let formatter = Formatter::builder()
         .format_title(!args.skip_title_format)
