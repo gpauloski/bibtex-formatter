@@ -65,36 +65,47 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
 
     pub fn parse(&mut self) -> Result<Entries> {
         let mut entries: Vec<EntryType> = Vec::new();
+        let mut leadings: Vec<String> = Vec::new();
+        // Whitespace an implicit comment swallowed while scanning up to the next
+        // `@`; it belongs to the element that follows the comment.
+        let mut pending_leading = String::new();
 
         loop {
-            // Consume any whitespace run preceding the next element. It is
-            // discarded before entries but attached to an implicit comment so
-            // the original spacing can be reproduced when not sorting.
-            let mut leading: Vec<Token> = Vec::new();
-            while let Some(info) = self.peek() {
-                if info.is_whitespace() {
-                    if let Some(info) = self.next() {
-                        leading.push(info.value);
-                    }
-                } else {
-                    break;
-                }
-            }
+            // The whitespace preceding this element is any whitespace carried
+            // over from a preceding comment plus the run we consume now.
+            let mut leading = std::mem::take(&mut pending_leading);
+            leading.push_str(&self.consume_whitespace());
 
             match self.peek() {
                 None => break,
                 Some(info) if info.value == Token::Special(Special::At) => {
                     entries.push(self.parse_entry()?);
+                    leadings.push(leading);
                 }
                 Some(_) => {
-                    entries.push(EntryType::CommentEntry(
-                        self.parse_implicit_comment(stringify(leading)),
-                    ));
+                    let (comment, trailing) = self.parse_implicit_comment();
+                    entries.push(EntryType::CommentEntry(comment));
+                    leadings.push(leading);
+                    pending_leading = trailing;
                 }
             }
         }
 
-        Ok(Entries::new(entries))
+        Ok(Entries::with_leading(entries, leadings))
+    }
+
+    fn consume_whitespace(&mut self) -> String {
+        let mut tokens: Vec<Token> = Vec::new();
+        while let Some(info) = self.peek() {
+            if info.is_whitespace() {
+                if let Some(info) = self.next() {
+                    tokens.push(info.value);
+                }
+            } else {
+                break;
+            }
+        }
+        stringify(tokens)
     }
 
     fn parse_entry(&mut self) -> Result<EntryType> {
@@ -120,7 +131,10 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
         Ok(entry)
     }
 
-    fn parse_implicit_comment(&mut self, leading: String) -> CommentEntry {
+    /// Parse free text between entries into an implicit comment, returning it
+    /// alongside the trailing whitespace it consumed (up to the next `@`) so the
+    /// caller can attribute that whitespace to the following element.
+    fn parse_implicit_comment(&mut self) -> (CommentEntry, String) {
         let mut tokens: Vec<Token> = Vec::new();
         while let Some(info) = self.peek() {
             if info.value == Token::Special(Special::At) {
@@ -131,12 +145,11 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
             }
         }
         // The leading whitespace was already consumed by the caller, so the raw
-        // text starts at the body. Split off the trailing whitespace (up to the
-        // next entry) to preserve the spacing after the comment.
+        // text starts at the body. Split off the trailing whitespace.
         let raw = stringify(tokens);
         let body = raw.trim_end();
         let trailing = raw[body.len()..].to_string();
-        CommentEntry::implicit_with_spacing(body.to_string(), leading, trailing)
+        (CommentEntry::implicit(body.to_string()), trailing)
     }
 
     fn parse_comment_entry(&mut self) -> Result<CommentEntry> {
@@ -393,6 +406,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::CommentKind;
 
     fn as_iter(tokens: Vec<Token>) -> impl Iterator<Item = TokenInfo> {
         tokens.into_iter().enumerate().map(|(i, token)| TokenInfo {
@@ -420,6 +434,44 @@ mod tests {
         let entry = parser.parse_entry()?;
         let expected = EntryType::CommentEntry(CommentEntry::explicit(" value ".to_string()));
         assert_eq!(entry, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_comment_entry_captures_spacing() -> Result<()> {
+        let tokens = vec![
+            Token::Special(Special::At),
+            Token::Value("misc".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("a".to_string()),
+            Token::Special(Special::BraceRight),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Special(Special::At),
+            Token::Value("comment".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("note".to_string()),
+            Token::Special(Special::BraceRight),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Special(Special::At),
+            Token::Value("misc".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("b".to_string()),
+            Token::Special(Special::BraceRight),
+        ];
+        let mut parser = Parser::new(as_iter(tokens));
+
+        let entries = parser.parse()?;
+        let items: Vec<(&str, &EntryType)> = entries.iter_with_leading().collect();
+        // The whitespace preceding the @comment (three newlines) and the
+        // whitespace after it (one newline, preceding @misc{b}) are captured.
+        assert!(
+            matches!(items[1].1, EntryType::CommentEntry(c) if c.kind() == CommentKind::Explicit)
+        );
+        assert_eq!(items[1].0, "\n\n\n");
+        assert_eq!(items[2].0, "\n");
 
         Ok(())
     }
@@ -543,16 +595,13 @@ mod tests {
         let mut parser = Parser::new(as_iter(tokens));
 
         let entries = parser.parse()?;
-        let comment = entries
-            .iter()
-            .find_map(|e| match e {
-                EntryType::CommentEntry(c) => Some(c),
-                _ => None,
-            })
-            .expect("expected an implicit comment");
-        assert_eq!(comment.body(), "note");
-        assert_eq!(comment.leading(), "\n\n\n");
-        assert_eq!(comment.trailing(), "\n\n");
+        let items: Vec<(&str, &EntryType)> = entries.iter_with_leading().collect();
+        // The comment retains its trimmed body, its own leading whitespace
+        // (three newlines), and the whitespace it swallowed becomes the leading
+        // of the following entry (two newlines).
+        assert!(matches!(items[1].1, EntryType::CommentEntry(c) if c.body() == "note"));
+        assert_eq!(items[1].0, "\n\n\n");
+        assert_eq!(items[2].0, "\n\n");
 
         Ok(())
     }
