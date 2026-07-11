@@ -60,7 +60,22 @@ fn validate_snippets_remove_comments(name: &str) -> Result<()> {
     run_snippet(name, &Formatter::builder().remove_comments(true).build())
 }
 
+// Snippets exercising --remove-duplicates, which collapses exact-duplicate
+// entries and keeps entries that share a key but differ. Keep sorted by name.
+#[test_case("remove-duplicates" ; "collapse exact duplicates, keep conflicts")]
+fn validate_snippets_remove_duplicates(name: &str) -> Result<()> {
+    run_snippet_deduped(name, &Formatter::builder().build())
+}
+
 fn run_snippet(name: &str, formatter: &Formatter) -> Result<()> {
+    run_snippet_inner(name, formatter, false)
+}
+
+fn run_snippet_deduped(name: &str, formatter: &Formatter) -> Result<()> {
+    run_snippet_inner(name, formatter, true)
+}
+
+fn run_snippet_inner(name: &str, formatter: &Formatter, dedup: bool) -> Result<()> {
     let input = format!("tests/snippets/{}.in.bib", name);
     let output = format!("tests/snippets/{}.out.bib", name);
 
@@ -70,7 +85,11 @@ fn run_snippet(name: &str, formatter: &Formatter) -> Result<()> {
     let mut tokenizer = Tokenizer::new(raw_input.chars());
     let tokens = tokenizer.tokenize();
     let mut parser = Parser::new(tokens.into_iter());
-    let entries = parser.parse()?;
+    let mut entries = parser.parse()?;
+
+    if dedup {
+        entries.remove_duplicates();
+    }
 
     let formatted = formatter.format_entries(&entries);
 
