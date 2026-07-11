@@ -15,6 +15,7 @@ The following formatting rules are applied (based on my personal preference :)):
 * The title and author tags are first in an entry followed by the remaining tags sorted by name.
 * Braces are used for tag content rather than quotes.
 * Capitalized words in title tags are wrapped in braces to preserve formatting.
+* Comments—both `@comment{...}` entries and free text between entries—are preserved, attach to the entry that follows them, and move with it when entries are sorted; comments after the last entry stay at the end.
 
 Learn more about the bibtex format at [bibtex.org](https://www.bibtex.org/Format/) and in this [nice summary](https://maverick.inria.fr/~Xavier.Decoret/resources/xdkbibtex/bibtex_summary.html).
 
@@ -43,6 +44,13 @@ Write formatted bibtex to a new file:
 ```bash
 bibtex-format references.bib --output formatted.bib
 ```
+
+Strip all comments (both `@comment{...}` entries and free text between entries):
+```bash
+bibtex-format references.bib --remove-comments
+```
+
+Run `bibtex-format --help` to see all available options.
 
 ## Example
 
