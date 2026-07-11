@@ -9,7 +9,7 @@ An opinionated bibtex parser and formatter written in Rust.
 > [!TIP]
 > Please open an issue if you find an edge case or bug!
 
-The following formatting rules are applied (based on my personal preference :)):
+The following formatting rules are applied by default (based on my personal preference :)):
 * Entry types, citation keys, and tag names are lowercase.
 * Entries are sorted by citation key.
 * The title and author tags are first in an entry followed by the remaining tags sorted by name.
@@ -17,20 +17,15 @@ The following formatting rules are applied (based on my personal preference :)):
 * Capitalized words in title tags are wrapped in braces to preserve formatting.
 * Comments—both `@comment{...}` entries and free text between entries—are preserved, attach to the entry that follows them, and move with it when entries are sorted; comments after the last entry stay at the end.
 
-Learn more about the bibtex format at [bibtex.org](https://www.bibtex.org/Format/) and in this [nice summary](https://maverick.inria.fr/~Xavier.Decoret/resources/xdkbibtex/bibtex_summary.html).
+Most rules are configurable; see `--help`. Learn more about the bibtex format at [bibtex.org](https://www.bibtex.org/Format/) and in this [nice summary](https://maverick.inria.fr/~Xavier.Decoret/resources/xdkbibtex/bibtex_summary.html).
 
 ## Installation
 
 Installation requires the Rust toolchain. Get it [here](https://www.rust-lang.org/tools/install).
 
-**Clone the source:**
+Install the binary directly from GitHub:
 ```bash
-git clone git@github.com:gpauloski/bibtex-formatter.git
-```
-
-**Compile and install the binary:**
-```bash
-cargo install --path .
+cargo install --git https://github.com/gpauloski/bibtex-formatter.git
 ```
 
 ## Usage
@@ -100,4 +95,29 @@ Run `bibtex-format --help` to see all available options.
     pages = {409-418},
     year = {2020},
 }
+```
+
+## Developing
+
+Clone the repository and build from source:
+```bash
+git clone git@github.com:gpauloski/bibtex-formatter.git
+cd bibtex-formatter
+cargo build
+```
+
+Run the formatter without installing:
+```bash
+cargo run -- references.bib
+```
+
+Run the test suite:
+```bash
+cargo test
+```
+
+Format and lint before opening a pull request:
+```bash
+cargo fmt
+cargo clippy
 ```
