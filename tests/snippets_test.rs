@@ -24,6 +24,7 @@ use std::fs;
 // Notes:
 //   - Leading and trailing whitespace is trimmed from the expected output.
 #[test_case("coalesce-multiline-content" ; "coalesce mutliline contents")]
+#[test_case("implicit-comments" ; "attach comments to following entry")]
 #[test_case("non-delimited-content" ; "non-delimited single word contents")]
 #[test_case("preserve-title-casing" ; "preserve title casing with braces")]
 #[test_case("quotes-to-braces" ; "convert quotes to braces in tag contents")]

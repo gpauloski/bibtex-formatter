@@ -28,6 +28,9 @@ struct Args {
     /// Remove tags with empty contents.
     #[arg(long)]
     remove_empty_tags: bool,
+    /// Remove all comments (implicit text and @comment entries).
+    #[arg(long)]
+    remove_comments: bool,
 }
 
 fn main() -> ExitCode {
@@ -55,6 +58,7 @@ fn main() -> ExitCode {
 
     let formatter = Formatter::builder()
         .format_title(!args.skip_title_format)
+        .remove_comments(args.remove_comments)
         .skip_empty_tags(args.remove_empty_tags)
         .sort_entries(!args.skip_sort_entries)
         .sort_tags(!args.skip_sort_tags)
