@@ -68,10 +68,17 @@ impl Ord for RefEntry {
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub struct CommentEntry {
     body: String,
     kind: CommentKind,
+    // Whitespace between the previous element and this comment, and between
+    // this comment and the following element, captured verbatim from the
+    // source. Only populated for parsed implicit comments; used solely to
+    // reproduce the original vertical spacing when entries are not sorted.
+    // Excluded from equality/ordering since it is presentation metadata.
+    leading: String,
+    trailing: String,
 }
 
 impl CommentEntry {
@@ -79,6 +86,8 @@ impl CommentEntry {
         Self {
             body,
             kind: CommentKind::Explicit,
+            leading: String::new(),
+            trailing: String::new(),
         }
     }
 
@@ -86,6 +95,17 @@ impl CommentEntry {
         Self {
             body,
             kind: CommentKind::Implicit,
+            leading: String::new(),
+            trailing: String::new(),
+        }
+    }
+
+    pub const fn implicit_with_spacing(body: String, leading: String, trailing: String) -> Self {
+        Self {
+            body,
+            kind: CommentKind::Implicit,
+            leading,
+            trailing,
         }
     }
 
@@ -96,9 +116,25 @@ impl CommentEntry {
     pub const fn kind(&self) -> CommentKind {
         self.kind
     }
+
+    pub fn leading(&self) -> &str {
+        &self.leading
+    }
+
+    pub fn trailing(&self) -> &str {
+        &self.trailing
+    }
 }
 
 impl Entry for CommentEntry {}
+
+impl PartialEq for CommentEntry {
+    fn eq(&self, other: &Self) -> bool {
+        self.body == other.body && self.kind == other.kind
+    }
+}
+
+impl Eq for CommentEntry {}
 
 impl PartialOrd for CommentEntry {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {

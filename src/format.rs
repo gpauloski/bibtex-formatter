@@ -37,6 +37,12 @@ impl Formatter {
             .filter(|e| !(self.remove_comments && matches!(e, EntryType::CommentEntry(_))))
             .collect();
 
+        // Without sorting, emit elements in their original order and reproduce
+        // the source whitespace around comments rather than reflowing it.
+        if !self.sort_entries {
+            return self.format_in_order(&entries);
+        }
+
         // Attach each run of comments to the next non-comment entry; leftovers
         // form a trailing entry-less group that must stay last.
         let mut groups: Vec<Group> = Vec::new();
@@ -58,14 +64,12 @@ impl Formatter {
             });
         }
 
-        if self.sort_entries {
-            groups.sort_by(|a, b| match (a.entry, b.entry) {
-                (Some(x), Some(y)) => x.cmp(y), // derived EntryType Ord, unchanged
-                (Some(_), None) => Ordering::Less,
-                (None, Some(_)) => Ordering::Greater,
-                (None, None) => Ordering::Equal,
-            });
-        }
+        groups.sort_by(|a, b| match (a.entry, b.entry) {
+            (Some(x), Some(y)) => x.cmp(y), // derived EntryType Ord, unchanged
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (None, None) => Ordering::Equal,
+        });
 
         let mut out = String::new();
         for (i, group) in groups.iter().enumerate() {
@@ -84,6 +88,47 @@ impl Formatter {
             out.push_str(&parts.join("\n")); // comments flush above their entry
         }
         out
+    }
+
+    /// Emit entries in their original order, reproducing the source whitespace
+    /// captured around implicit comments so nothing is reflowed when sorting is
+    /// disabled.
+    fn format_in_order(&self, entries: &[&EntryType]) -> String {
+        let mut out = String::new();
+        for (i, entry) in entries.iter().enumerate() {
+            if i > 0 {
+                out.push_str(&Self::separator_before(entries[i - 1], entry));
+            }
+            out.push_str(&self.format_entry(entry));
+        }
+        out
+    }
+
+    /// Choose the whitespace separating two adjacent elements when preserving
+    /// order. Captured comment whitespace takes precedence; otherwise fall back
+    /// to the same rules the grouped/sorted path uses.
+    fn separator_before(prev: &EntryType, cur: &EntryType) -> String {
+        if let EntryType::CommentEntry(c) = cur {
+            if c.kind() == CommentKind::Implicit && !c.leading().is_empty() {
+                return newlines(c.leading());
+            }
+        }
+        if let EntryType::CommentEntry(c) = prev {
+            if c.kind() == CommentKind::Implicit && !c.trailing().is_empty() {
+                return newlines(c.trailing());
+            }
+        }
+        // No captured whitespace: a comment block is set off by a blank line and
+        // sits flush above its following entry, matching the sorted path.
+        if matches!(cur, EntryType::CommentEntry(_)) {
+            "\n\n".to_string()
+        } else if matches!(prev, EntryType::CommentEntry(_)) {
+            "\n".to_string()
+        } else if discriminant(prev) != discriminant(cur) || matches!(cur, EntryType::RefEntry(_)) {
+            "\n\n".to_string()
+        } else {
+            "\n".to_string()
+        }
     }
 
     fn blank_line_between(prev: &Group, next: &Group) -> bool {
@@ -279,6 +324,13 @@ pub fn remove_braces(text: &str) -> String {
     text.replace(&['{', '}'][..], "")
 }
 
+/// Reproduce the newline structure of a captured whitespace run, dropping any
+/// spaces/indentation but keeping blank lines. Always emits at least one newline
+/// since adjacent elements are on separate lines.
+fn newlines(ws: &str) -> String {
+    "\n".repeat(ws.matches('\n').count().max(1))
+}
+
 fn split_with_delimiters(input: &str) -> Vec<String> {
     let mut result = Vec::new();
     let mut current = String::new();
@@ -432,6 +484,24 @@ mod tests {
             ref_entry("a"),
         ]);
         let expected = "a note\n@misc{z}\n\n@misc{a}";
+        assert_eq!(formatter.format_entries(&entries), expected);
+    }
+
+    #[test]
+    fn test_format_entries_skip_sort_preserves_comment_whitespace() {
+        let formatter = Formatter::builder().sort_entries(false).build();
+        let entries = Entries::new(vec![
+            ref_entry("a"),
+            EntryType::CommentEntry(CommentEntry::implicit_with_spacing(
+                "note".to_string(),
+                "\n\n\n".to_string(),
+                "\n\n".to_string(),
+            )),
+            ref_entry("b"),
+        ]);
+        // Blank lines around the comment are reproduced verbatim: two blank
+        // lines before it, one blank line after it.
+        let expected = "@misc{a}\n\n\nnote\n\n@misc{b}";
         assert_eq!(formatter.format_entries(&entries), expected);
     }
 

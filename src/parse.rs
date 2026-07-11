@@ -66,12 +66,32 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
     pub fn parse(&mut self) -> Result<Entries> {
         let mut entries: Vec<EntryType> = Vec::new();
 
-        while let Some(token_info) = self.peek_non_whitespace() {
-            let entry = match token_info.value {
-                Token::Special(Special::At) => self.parse_entry()?,
-                _ => EntryType::CommentEntry(self.parse_implicit_comment()),
-            };
-            entries.push(entry);
+        loop {
+            // Consume any whitespace run preceding the next element. It is
+            // discarded before entries but attached to an implicit comment so
+            // the original spacing can be reproduced when not sorting.
+            let mut leading: Vec<Token> = Vec::new();
+            while let Some(info) = self.peek() {
+                if info.is_whitespace() {
+                    if let Some(info) = self.next() {
+                        leading.push(info.value);
+                    }
+                } else {
+                    break;
+                }
+            }
+
+            match self.peek() {
+                None => break,
+                Some(info) if info.value == Token::Special(Special::At) => {
+                    entries.push(self.parse_entry()?);
+                }
+                Some(_) => {
+                    entries.push(EntryType::CommentEntry(
+                        self.parse_implicit_comment(stringify(leading)),
+                    ));
+                }
+            }
         }
 
         Ok(Entries::new(entries))
@@ -100,7 +120,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
         Ok(entry)
     }
 
-    fn parse_implicit_comment(&mut self) -> CommentEntry {
+    fn parse_implicit_comment(&mut self, leading: String) -> CommentEntry {
         let mut tokens: Vec<Token> = Vec::new();
         while let Some(info) = self.peek() {
             if info.value == Token::Special(Special::At) {
@@ -110,7 +130,13 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
                 tokens.push(info.value);
             }
         }
-        CommentEntry::implicit(stringify(tokens).trim().to_string())
+        // The leading whitespace was already consumed by the caller, so the raw
+        // text starts at the body. Split off the trailing whitespace (up to the
+        // next entry) to preserve the spacing after the comment.
+        let raw = stringify(tokens);
+        let body = raw.trim_end();
+        let trailing = raw[body.len()..].to_string();
+        CommentEntry::implicit_with_spacing(body.to_string(), leading, trailing)
     }
 
     fn parse_comment_entry(&mut self) -> Result<CommentEntry> {
@@ -490,6 +516,43 @@ mod tests {
             EntryType::CommentEntry(CommentEntry::implicit("trailing text".to_string())),
         ]);
         assert_eq!(entries, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_implicit_comment_captures_spacing() -> Result<()> {
+        let tokens = vec![
+            Token::Special(Special::At),
+            Token::Value("misc".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("a".to_string()),
+            Token::Special(Special::BraceRight),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Value("note".to_string()),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Special(Special::At),
+            Token::Value("misc".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("b".to_string()),
+            Token::Special(Special::BraceRight),
+        ];
+        let mut parser = Parser::new(as_iter(tokens));
+
+        let entries = parser.parse()?;
+        let comment = entries
+            .iter()
+            .find_map(|e| match e {
+                EntryType::CommentEntry(c) => Some(c),
+                _ => None,
+            })
+            .expect("expected an implicit comment");
+        assert_eq!(comment.body(), "note");
+        assert_eq!(comment.leading(), "\n\n\n");
+        assert_eq!(comment.trailing(), "\n\n");
 
         Ok(())
     }
