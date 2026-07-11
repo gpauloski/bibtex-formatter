@@ -24,9 +24,21 @@ impl Entries {
         self.0.iter()
     }
 
+    /// Sort entries in place by their derived ordering.
+    ///
+    /// NOTE: a flat sort does not preserve comment attachment (comments
+    /// travelling with the entry that follows them). Comment positioning is a
+    /// presentation concern handled by `Formatter::format_entries`; this method
+    /// is retained for API compatibility only.
     pub fn sort(&mut self) {
         self.0.sort();
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
+pub enum CommentKind {
+    Explicit, // @comment{...}
+    Implicit, // free text between entries
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -57,15 +69,32 @@ impl Ord for RefEntry {
 }
 
 #[derive(Debug, Eq, PartialEq)]
-pub struct CommentEntry(String);
+pub struct CommentEntry {
+    body: String,
+    kind: CommentKind,
+}
 
 impl CommentEntry {
-    pub const fn new(body: String) -> Self {
-        Self(body)
+    pub const fn explicit(body: String) -> Self {
+        Self {
+            body,
+            kind: CommentKind::Explicit,
+        }
+    }
+
+    pub const fn implicit(body: String) -> Self {
+        Self {
+            body,
+            kind: CommentKind::Implicit,
+        }
     }
 
     pub fn body(&self) -> &str {
-        &self.0
+        &self.body
+    }
+
+    pub const fn kind(&self) -> CommentKind {
+        self.kind
     }
 }
 
@@ -79,7 +108,9 @@ impl PartialOrd for CommentEntry {
 
 impl Ord for CommentEntry {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.0.cmp(&other.0)
+        self.body
+            .cmp(&other.body)
+            .then_with(|| self.kind.cmp(&other.kind))
     }
 }
 

@@ -127,7 +127,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
             }
         }
 
-        Ok(CommentEntry::new(stringify(tokens)))
+        Ok(CommentEntry::explicit(stringify(tokens)))
     }
 
     fn parse_preamble_entry(&mut self) -> Result<PreambleEntry> {
@@ -382,7 +382,7 @@ mod tests {
         let mut parser = Parser::new(as_iter(tokens));
 
         let entry = parser.parse_entry()?;
-        let expected = EntryType::CommentEntry(CommentEntry::new(" value ".to_string()));
+        let expected = EntryType::CommentEntry(CommentEntry::explicit(" value ".to_string()));
         assert_eq!(entry, expected);
 
         Ok(())
