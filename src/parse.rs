@@ -69,18 +69,7 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
         while let Some(token_info) = self.peek_non_whitespace() {
             let entry = match token_info.value {
                 Token::Special(Special::At) => self.parse_entry()?,
-                _ => {
-                    if let Some(token_info) = self.next() {
-                        return Err(Error::UnexpectedToken(
-                            Token::Special(Special::At),
-                            token_info,
-                        ));
-                    } else {
-                        return Err(Error::InternalAssertion(
-                            "Peeked token return none.".to_string(),
-                        ));
-                    };
-                }
+                _ => EntryType::CommentEntry(self.parse_implicit_comment()),
             };
             entries.push(entry);
         }
@@ -111,19 +100,40 @@ impl<I: Iterator<Item = TokenInfo>> Parser<I> {
         Ok(entry)
     }
 
+    fn parse_implicit_comment(&mut self) -> CommentEntry {
+        let mut tokens: Vec<Token> = Vec::new();
+        while let Some(info) = self.peek() {
+            if info.value == Token::Special(Special::At) {
+                break;
+            }
+            if let Some(info) = self.next() {
+                tokens.push(info.value);
+            }
+        }
+        CommentEntry::implicit(stringify(tokens).trim().to_string())
+    }
+
     fn parse_comment_entry(&mut self) -> Result<CommentEntry> {
         self.expect(Token::Special(Special::BraceLeft))?;
 
+        let mut nested = 0;
         let mut tokens: Vec<Token> = Vec::new();
 
         loop {
-            if let Some(token_info) = self.next() {
-                match token_info.value {
-                    Token::Special(Special::BraceRight) => break,
+            match self.next() {
+                Some(info) => match info.value {
+                    Token::Special(Special::BraceRight) if nested == 0 => break,
+                    Token::Special(Special::BraceRight) => {
+                        nested -= 1;
+                        tokens.push(info.value);
+                    }
+                    Token::Special(Special::BraceLeft) => {
+                        nested += 1;
+                        tokens.push(info.value);
+                    }
                     value => tokens.push(value),
-                }
-            } else {
-                return Err(Error::EndOfTokenStream(self.position));
+                },
+                None => return Err(Error::EndOfTokenStream(self.position)),
             }
         }
 
@@ -384,6 +394,182 @@ mod tests {
         let entry = parser.parse_entry()?;
         let expected = EntryType::CommentEntry(CommentEntry::explicit(" value ".to_string()));
         assert_eq!(entry, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_implicit_comment_between_entries() -> Result<()> {
+        let tokens = vec![
+            Token::Special(Special::At),
+            Token::Value("misc".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("b".to_string()),
+            Token::Special(Special::BraceRight),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Value("a".to_string()),
+            Token::Whitespace(Whitespace::Space),
+            Token::Value("comment".to_string()),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Special(Special::At),
+            Token::Value("misc".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("a".to_string()),
+            Token::Special(Special::BraceRight),
+        ];
+        let mut parser = Parser::new(as_iter(tokens));
+
+        let entries = parser.parse()?;
+        let expected = Entries::new(vec![
+            EntryType::RefEntry(RefEntry::new(
+                "misc".to_string(),
+                "b".to_string(),
+                Vec::with_capacity(0),
+            )),
+            EntryType::CommentEntry(CommentEntry::implicit("a comment".to_string())),
+            EntryType::RefEntry(RefEntry::new(
+                "misc".to_string(),
+                "a".to_string(),
+                Vec::with_capacity(0),
+            )),
+        ]);
+        assert_eq!(entries, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_implicit_comment_before_first_entry() -> Result<()> {
+        let tokens = vec![
+            Token::Value("header".to_string()),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Special(Special::At),
+            Token::Value("misc".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("a".to_string()),
+            Token::Special(Special::BraceRight),
+        ];
+        let mut parser = Parser::new(as_iter(tokens));
+
+        let entries = parser.parse()?;
+        let expected = Entries::new(vec![
+            EntryType::CommentEntry(CommentEntry::implicit("header".to_string())),
+            EntryType::RefEntry(RefEntry::new(
+                "misc".to_string(),
+                "a".to_string(),
+                Vec::with_capacity(0),
+            )),
+        ]);
+        assert_eq!(entries, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_implicit_comment_trailing() -> Result<()> {
+        let tokens = vec![
+            Token::Special(Special::At),
+            Token::Value("misc".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("a".to_string()),
+            Token::Special(Special::BraceRight),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Value("trailing".to_string()),
+            Token::Whitespace(Whitespace::Space),
+            Token::Value("text".to_string()),
+        ];
+        let mut parser = Parser::new(as_iter(tokens));
+
+        let entries = parser.parse()?;
+        let expected = Entries::new(vec![
+            EntryType::RefEntry(RefEntry::new(
+                "misc".to_string(),
+                "a".to_string(),
+                Vec::with_capacity(0),
+            )),
+            EntryType::CommentEntry(CommentEntry::implicit("trailing text".to_string())),
+        ]);
+        assert_eq!(entries, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_implicit_comment_only() -> Result<()> {
+        let tokens = vec![
+            Token::Value("just".to_string()),
+            Token::Whitespace(Whitespace::Space),
+            Token::Value("text".to_string()),
+        ];
+        let mut parser = Parser::new(as_iter(tokens));
+
+        let entries = parser.parse()?;
+        let expected = Entries::new(vec![EntryType::CommentEntry(CommentEntry::implicit(
+            "just text".to_string(),
+        ))]);
+        assert_eq!(entries, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_implicit_comment_special_chars() -> Result<()> {
+        let tokens = vec![
+            Token::Value("%".to_string()),
+            Token::Whitespace(Whitespace::Space),
+            Token::Special(Special::BraceLeft),
+            Token::Special(Special::BraceRight),
+            Token::Special(Special::Quote),
+            Token::Special(Special::Comma),
+            Token::Special(Special::Equals),
+            Token::Special(Special::Pound),
+            Token::Whitespace(Whitespace::NewLine),
+            Token::Value("note".to_string()),
+            Token::Whitespace(Whitespace::NewLine),
+        ];
+        let mut parser = Parser::new(as_iter(tokens));
+
+        let entries = parser.parse()?;
+        let expected = Entries::new(vec![EntryType::CommentEntry(CommentEntry::implicit(
+            "% {}\",=#\nnote".to_string(),
+        ))]);
+        assert_eq!(entries, expected);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_comment_entry_nested_braces() -> Result<()> {
+        let tokens = vec![
+            Token::Special(Special::At),
+            Token::Value("comment".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("a".to_string()),
+            Token::Whitespace(Whitespace::Space),
+            Token::Special(Special::BraceLeft),
+            Token::Value("b".to_string()),
+            Token::Special(Special::BraceRight),
+            Token::Whitespace(Whitespace::Space),
+            Token::Value("c".to_string()),
+            Token::Special(Special::BraceRight),
+            Token::Special(Special::At),
+            Token::Value("misc".to_string()),
+            Token::Special(Special::BraceLeft),
+            Token::Value("a".to_string()),
+            Token::Special(Special::BraceRight),
+        ];
+        let mut parser = Parser::new(as_iter(tokens));
+
+        let entries = parser.parse()?;
+        let expected = Entries::new(vec![
+            EntryType::CommentEntry(CommentEntry::explicit("a {b} c".to_string())),
+            EntryType::RefEntry(RefEntry::new(
+                "misc".to_string(),
+                "a".to_string(),
+                Vec::with_capacity(0),
+            )),
+        ]);
+        assert_eq!(entries, expected);
 
         Ok(())
     }
