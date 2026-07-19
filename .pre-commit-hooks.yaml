@@ -1,0 +1,12 @@
+- id: bibtex-format
+  name: bibtex-format
+  description: Format BibTeX files in place
+  entry: bibtex-format --write
+  language: rust
+  files: \.bib$
+- id: bibtex-format-check
+  name: bibtex-format-check
+  description: Check that BibTeX files are formatted
+  entry: bibtex-format --check
+  language: rust
+  files: \.bib$

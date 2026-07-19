@@ -52,7 +52,49 @@ bibtex-format references.bib --remove-duplicates
 Entries that share a cite key but differ in content are all kept; each such
 collision is reported as a warning on stderr so nothing is dropped silently.
 
+Reformat one or more files in place:
+```bash
+bibtex-format --write references.bib other.bib
+```
+
+Check whether files are formatted without modifying them (exits non-zero if any
+file would change):
+```bash
+bibtex-format --check references.bib
+```
+
 Run `bibtex-format --help` to see all available options.
+
+### Exit codes
+
+| Code | Meaning |
+| ---- | ------- |
+| `0`  | Success; nothing needed reformatting. |
+| `1`  | Could not read an input file. |
+| `2`  | Invalid arguments. |
+| `3`  | Failed to parse an input file. |
+| `4`  | Failed to write an output file. |
+| `5`  | A file was reformatted (`--write`) or would be reformatted (`--check`). |
+
+## Use as a pre-commit hook
+
+This repository provides [pre-commit](https://pre-commit.com) hooks so `.bib`
+files stay formatted on every commit. Add the following to your
+`.pre-commit-config.yaml`:
+
+```yaml
+repos:
+  - repo: https://github.com/gpauloski/bibtex-formatter
+    rev: v0.2.0
+    hooks:
+      - id: bibtex-format          # auto-fix in place
+      # - id: bibtex-format-check  # verify only, no writes
+```
+
+The `bibtex-format` hook reformats staged `.bib` files in place and fails the
+commit when it changes anything, so you can review and re-stage. Use
+`bibtex-format-check` instead to fail without modifying files. Both build the
+binary via pre-commit's Rust support, so the Rust toolchain must be available.
 
 ## Example
 
