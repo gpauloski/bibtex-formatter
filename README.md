@@ -85,7 +85,7 @@ files stay formatted on every commit. Add the following to your
 ```yaml
 repos:
   - repo: https://github.com/gpauloski/bibtex-formatter
-    rev: v0.1.0
+    rev: v0.2.0
     hooks:
       - id: bibtex-format          # auto-fix in place
       # - id: bibtex-format-check  # verify only, no writes
